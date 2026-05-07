@@ -1,0 +1,2 @@
+[console_scripts]
+truclaw = truclaw_adk.cli:main
