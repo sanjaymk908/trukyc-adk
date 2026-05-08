@@ -1,37 +1,52 @@
-import os
 from .logging import log
-from .protect import compose_callbacks
+from .protect import protect_agent_tree
+
 
 _PATCHED = False
+_PROTECTED_IDS = set()
 
 
 def install_autopatch() -> None:
     global _PATCHED
+
     if _PATCHED:
         return
-    try:
-        from google.adk.agents import LlmAgent
-    except Exception as e:
-        log(f"[autopatch] google.adk not importable yet: {e}")
-        return
-    orig_init = LlmAgent.__init__
-    if getattr(orig_init, "_truclaw_patched", False):
+
+    from google.adk.agents.base_agent import BaseAgent
+
+    original_run_async = BaseAgent.run_async
+
+    if getattr(original_run_async, "_truclaw_wrapped", False):
         _PATCHED = True
+        log("[autopatch] BaseAgent.run_async already patched")
         return
 
-    def patched_init(self, *args, **kwargs):
-        existing = kwargs.get("before_tool_callback")
-        kwargs["before_tool_callback"] = compose_callbacks(existing)
-        orig_init(self, *args, **kwargs)
-        tools = getattr(self, "tools", None) or []
-        if tools:
-            log(f"[autopatch] guarded LlmAgent name={getattr(self, 'name', 'unknown')} tools={len(tools)}")
-        else:
-            log(f"[autopatch] guarded LlmAgent name={getattr(self, 'name', 'unknown')} tools=0")
+    async def patched_run_async(self, *args, **kwargs):
+        agent_id = id(self)
+        name = getattr(self, "name", "unknown")
 
-    patched_init._truclaw_patched = True
-    LlmAgent.__init__ = patched_init
+        if agent_id not in _PROTECTED_IDS:
+            log(f"[autopatch] protecting active agent tree root={name}")
+
+            protect_agent_tree(self)
+
+            _PROTECTED_IDS.add(agent_id)
+
+            log(f"[autopatch] active agent tree protected root={name}")
+
+        async for event in original_run_async(self, *args, **kwargs):
+            yield event
+
+    patched_run_async._truclaw_wrapped = True
+
+    BaseAgent.run_async = patched_run_async
+
     _PATCHED = True
-    log("[autopatch] LlmAgent constructor patched; all future agents receive TruClaw guardrail")
+
+    log(
+        "[autopatch] installed BaseAgent.run_async protector; "
+        "no import hook, no constructor patch"
+    )
+
 
 install_autopatch()
