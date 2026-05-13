@@ -1,6 +1,7 @@
 # TruClaw ADK Guardrail
 
 TruClaw is a security plugin for Google ADK that intercepts sensitive tool calls, performs risk classification, and requires out-of-band human approval on a paired iPhone before execution. It adds human-in-the-loop approval, biometric verification, and execution guardrails for shell commands, network actions, and other sensitive tool calls.
+[![TruClaw Demo](https://img.youtube.com/vi/5ROaep5yn1k/maxresdefault.jpg)](https://youtu.be/5ROaep5yn1k)
 
 No-code-ish ADK protection flow:
 ```bash
