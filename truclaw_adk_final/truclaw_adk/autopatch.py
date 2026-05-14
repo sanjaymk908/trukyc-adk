@@ -42,20 +42,28 @@ def install_autopatch() -> None:
 
 def _try_register_pair_route() -> None:
     try:
-        from google.adk.cli import fast_api as _fast_api_module
+        from google.adk.cli.adk_web_server import AdkWebServer
 
-        _original_get_app = _fast_api_module.get_fast_api_app
+        original = AdkWebServer.get_fast_api_app
 
-        def _patched_get_app(*args, **kwargs):
-            app = _original_get_app(*args, **kwargs)
-            from .pair_route import register_pair_route
-            register_pair_route(app)
+        if getattr(original, "_truclaw_pair_route_patched", False):
+            log("[autopatch] /pair route patch already installed")
+            return
+
+        def _patched_get_fast_api_app(self, *args, **kwargs):
+            app = original(self, *args, **kwargs)
+            if not getattr(app.state, "_truclaw_pair_route_registered", False):
+                from .pair_route import register_pair_route
+                register_pair_route(app)
+                app.state._truclaw_pair_route_registered = True
+                log("[autopatch] /pair route registered")
             return app
 
-        _fast_api_module.get_fast_api_app = _patched_get_app
-        log("[autopatch] get_fast_api_app patched for /pair route")
+        _patched_get_fast_api_app._truclaw_pair_route_patched = True
+        AdkWebServer.get_fast_api_app = _patched_get_fast_api_app
+        log("[autopatch] AdkWebServer.get_fast_api_app patched for /pair route")
     except Exception as e:
-        log(f"[autopatch] could not patch get_fast_api_app: {e}")
+        log(f"[autopatch] could not patch AdkWebServer.get_fast_api_app: {e}")
 
 
 install_autopatch()
