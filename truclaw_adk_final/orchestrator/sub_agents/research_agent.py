@@ -1,5 +1,6 @@
 import os
 import glob
+import asyncio
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import McpToolset, StdioConnectionParams
@@ -13,10 +14,46 @@ MODEL = os.getenv("ADK_MODEL", "gemini-2.5-flash")
 
 def _chromium_executable() -> str:
     matches = glob.glob("/ms-playwright/chromium-*/chrome-linux/chrome")
+    print(f"[research_agent] chromium glob matches: {matches}")
     return matches[0] if matches else ""
 
 
 _chromium = _chromium_executable()
+print(f"[research_agent] chromium path: {_chromium}")
+print(f"[research_agent] npx path: {os.popen('which npx').read().strip()}")
+print(f"[research_agent] PATH: {os.environ.get('PATH')}")
+
+
+async def _test_mcp():
+    try:
+        from google.adk.tools.mcp_tool.mcp_toolset import McpToolset, StdioConnectionParams
+        from mcp import StdioServerParameters
+        toolset = McpToolset(
+            connection_params=StdioConnectionParams(
+                server_params=StdioServerParameters(
+                    command="/usr/bin/npx",
+                    args=["-y", "@playwright/mcp@latest", "--no-sandbox"],
+                    env={
+                        **os.environ,
+                        "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright",
+                        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    }
+                )
+            )
+        )
+        tools, ctx = await toolset.load_tools()
+        print(f"[research_agent] MCP tools loaded: {[t.name for t in tools]}")
+        await ctx.aclose()
+    except Exception as e:
+        print(f"[research_agent] MCP session error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+
+try:
+    asyncio.get_event_loop().run_until_complete(_test_mcp())
+except Exception as e:
+    print(f"[research_agent] event loop error: {e}")
+
 
 browser_toolset = McpToolset(
     connection_params=StdioConnectionParams(
