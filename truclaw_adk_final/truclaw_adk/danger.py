@@ -24,6 +24,10 @@ SAFE_TOOLS = {
     "start_pairing",
     "status",
 
+    # TruClaw meta-tools — must never be intercepted by the guardrail
+    "truclaw_pair",
+    "truclaw_status",
+
     # ADK internal routing/delegation tools — MUST NOT challenge these
     "transfer_to_agent",
     "transfer_to_agent_tool",
