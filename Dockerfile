@@ -1,23 +1,28 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-# base deps only
 RUN apt-get update && apt-get install -y --fix-missing \
     git curl gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# install Node.js 20 via NodeSource (cleaner than apt nodejs)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# install playwright mcp
-RUN npm install -g @playwright/mcp@latest
-
-# install chromium with all deps into known path
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PYTHONUNBUFFERED=1
-RUN npx -y playwright@latest install --with-deps chromium
+
+# install mcp first so we know its bundled playwright version
+RUN npm install -g @playwright/mcp@latest
+
+# install chromium using the EXACT playwright version bundled in @playwright/mcp
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright node -e "\
+const path = require('path');\
+const pw = require(path.join(require.resolve('@playwright/mcp'), '../../node_modules/playwright/package.json'));\
+console.log('playwright version in mcp:', pw.version);\
+" || true
+
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright npx --prefix $(npm root -g)/@playwright/mcp playwright install --with-deps chromium
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
