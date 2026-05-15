@@ -14,8 +14,6 @@ browser_toolset = McpToolset(
             command="npx",
             args=[
                 "-y", "@playwright/mcp@latest",
-                "--browser", "chromium",
-                "--executable-path", "/usr/bin/chromium",
                 "--no-sandbox",
             ]
         )
