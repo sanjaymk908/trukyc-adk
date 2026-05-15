@@ -1,5 +1,4 @@
 import os
-import glob
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import McpToolset, StdioConnectionParams
@@ -10,18 +9,6 @@ load_dotenv()
 
 MODEL = os.getenv("ADK_MODEL", "gemini-2.5-flash")
 
-
-def _chromium_executable() -> str:
-    pattern = "/ms-playwright/chromium-*/chrome-linux/chrome"
-    matches = glob.glob(pattern)
-    if matches:
-        return matches[0]
-    # fallback to env var if set explicitly
-    return os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "")
-
-
-_chromium = _chromium_executable()
-
 browser_toolset = McpToolset(
     connection_params=StdioConnectionParams(
         server_params=StdioServerParameters(
@@ -29,7 +16,6 @@ browser_toolset = McpToolset(
             args=[
                 "-y", "@playwright/mcp@latest",
                 "--no-sandbox",
-                *( ["--executable-path", _chromium] if _chromium else [] ),
             ],
             env={
                 **os.environ,
