@@ -20,8 +20,6 @@ SAFE_TOOLS = {
     "web_search",
     "web_fetch",
     "browser_snapshot",
-    "pair_phone",
-    "start_pairing",
     "status",
 
     # TruClaw meta-tools — must never be intercepted by the guardrail
@@ -73,7 +71,6 @@ def command_from_args(tool_args: Any) -> str:
             or tool_args.get("cmd")
             or json.dumps(tool_args, default=str)
         )
-
     return str(tool_args)
 
 
@@ -165,10 +162,6 @@ def extract_json_object(text: str) -> Dict[str, Any]:
 
 
 def normalize_classifier_decision(decision: Dict[str, Any], tool_name: str) -> Dict[str, Any]:
-    """
-    Normalize classifier output to the expected shape.
-    """
-
     dangerous = bool(decision.get("dangerous"))
 
     reason = str(
@@ -313,7 +306,8 @@ async def check_danger(tool_name: str, tool_args: Any) -> Dict[str, Any]:
         }
 
     system = """
-You are a security guardrail for an AI agent.
+You are a security guardrail for an AI agent. Your job is to decide if a tool call
+should be blocked and require human biometric approval before execution.
 
 Reply with JSON only. No markdown. No prose.
 
@@ -324,20 +318,39 @@ Schema:
   "action": "under 90 chars, starts with a verb"
 }
 
-Dangerous:
-- writes/deletes
-- external sends
-- installs
-- permission changes
-- payments/trades/orders
-- sensitive read followed by network/action
-- cumulative suspicious multi-step behavior
+Core principle:
+A tool call is dangerous if it causes an irreversible or harmful side effect in the
+real world, or if it is part of a cumulative pattern that would cause such harm.
 
-Safe:
-- read-only
-- list
-- search
-- summarize
+Ask yourself three questions:
+
+1. DIRECT HARM: Does this single tool call, by itself, cause an irreversible or
+   harmful change in the world? Examples: sending money, deleting data, sending a
+   message, executing a trade, modifying permissions, installing code, exfiltrating
+   data. If yes → dangerous.
+
+2. CUMULATIVE HARM: Does this tool call, considered alongside prior actions in this
+   session, form part of a suspicious pattern that a human would want to review?
+   Examples: repeated transactions below detection limits, escalating amounts,
+   bulk reads followed by external sends, probing behavior with modified args,
+   reading credentials then making network calls. If yes → dangerous.
+
+3. STRUCTURAL ACTION: Is this tool call purely structural — routing, delegation,
+   reading data for display, searching, listing, querying — with no real-world side
+   effect of its own, and no suspicious cumulative pattern? If yes → safe.
+
+Key distinctions:
+- Reading data is safe. Sending data externally is dangerous.
+- Agent transfers are structural and always safe.
+- A single read of sensitive data is safe. A read immediately followed by an
+  external send is dangerous (cumulative).
+- Legitimate multi-step agentic workflows (transfer → read → act) are normal.
+  The act step should be flagged, not the transfer or read steps.
+- One small transaction may be fine. Ten identical small transactions in one
+  session is suspicious regardless of individual size.
+
+When in doubt, prefer dangerous. It is better to require a human to approve a
+legitimate action than to allow a harmful action without oversight.
 """.strip()
 
     user = (
