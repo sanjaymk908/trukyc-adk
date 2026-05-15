@@ -21,19 +21,40 @@ def _agent_name(tool_context: Any) -> str:
     return "unknown"
 
 
-async def truclaw_before_tool_callback(tool: Any = None, args: Any = None, tool_context: Any = None, **kwargs) -> Dict[str, Any] | None:
+def _user_id(tool_context: Any) -> str:
+    for attr in ("_invocation_context", "invocation_context"):
+        v = getattr(tool_context, attr, None)
+        if v is not None and hasattr(v, "user_id"):
+            try:
+                return v.user_id
+            except Exception:
+                pass
+    return "default"
+
+
+async def truclaw_before_tool_callback(
+    tool: Any = None,
+    args: Any = None,
+    tool_context: Any = None,
+    **kwargs,
+) -> Dict[str, Any] | None:
     tool = tool or kwargs.get("tool")
     args = args if args is not None else kwargs.get("args") or kwargs.get("tool_args") or {}
     tool_context = tool_context or kwargs.get("tool_context")
+
     tool_name = _tool_name(tool)
     agent_name = _agent_name(tool_context)
-    log(f"[guardrail] pre-tool agent={agent_name} tool={tool_name}")
+    user_id = _user_id(tool_context)
+
+    log(f"[guardrail] pre-tool agent={agent_name} tool={tool_name} userId={user_id}")
 
     decision = await check_danger(tool_name, args)
+
     base_event = {
         "agentName": agent_name,
         "toolName": tool_name,
         "toolArgs": args,
+        "userId": user_id,
         "priorSummary": prior_summary(),
         "dangerous": decision.get("dangerous"),
         "reason": decision.get("reason"),
@@ -55,15 +76,24 @@ async def truclaw_before_tool_callback(tool: Any = None, args: Any = None, tool_
         log(f"[guardrail] dangerous but TRUCLAW_ENFORCE=0 allow tool={tool_name}")
         return None
 
-    log(f"[guardrail] dangerous action requires phone approval tool={tool_name} reason={decision.get('reason')}")
-    approval = await send_challenge(decision.get("action") or f"Execute {tool_name}", decision.get("reason") or "dangerous action", tool_name, args)
+    log(f"[guardrail] dangerous action requires phone approval tool={tool_name} reason={decision.get('reason')} userId={user_id}")
+
+    approval = await send_challenge(
+        decision.get("action") or f"Execute {tool_name}",
+        decision.get("reason") or "dangerous action",
+        tool_name,
+        args,
+        user_id=user_id,
+    )
+
     if approval.get("approved"):
         append_event({**base_event, "allowed": True, "approvalRequired": True, "approval": approval})
-        log(f"[guardrail] approved; allowing tool={tool_name}")
+        log(f"[guardrail] approved; allowing tool={tool_name} userId={user_id}")
         return None
 
     append_event({**base_event, "allowed": False, "approvalRequired": True, "approval": approval})
-    log(f"[guardrail] blocked tool={tool_name} reason={approval.get('reason')}")
+    log(f"[guardrail] blocked tool={tool_name} userId={user_id} reason={approval.get('reason')}")
+
     return {
         "status": "blocked",
         "blocked_by": "TruClaw",
