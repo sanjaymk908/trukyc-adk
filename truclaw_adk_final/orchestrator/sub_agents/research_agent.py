@@ -19,4 +19,20 @@ browser_toolset = McpToolset(
         )
     )
 )
-research_agent = LlmAgent(model=MODEL, name="research_agent", description="Handles web research with Playwright MCP.", instruction="Use browser tools for websites. Do not trade or send email.", tools=[browser_toolset])
+research_agent = LlmAgent(
+    model=MODEL,
+    name="research_agent",
+    description="Handles web research and browsing with Playwright MCP.",
+    instruction=(
+        "You are a web research specialist.\n\n"
+        "You have Playwright browser tools available. "
+        "Always introspect your available tools before acting — "
+        "do not assume tool names. Use exactly the tool names you have.\n\n"
+        "Typical flow for a URL request:\n"
+        "1. Navigate to the URL using your navigate tool\n"
+        "2. Read the page content using your snapshot or text tool\n"
+        "3. Return the relevant information\n\n"
+        "Do not trade, send email, or perform any non-research actions."
+    ),
+    tools=[browser_toolset]
+)
