@@ -87,7 +87,7 @@ if CHROMIUM_PATH:
 # ── build MCP args ────────────────────────────────────────────────────────────
 
 MCP_ARGS = [
-    "-y", "@playwright/mcp@latest",
+    "@playwright/mcp@latest",
     "--no-sandbox",
 ]
 
