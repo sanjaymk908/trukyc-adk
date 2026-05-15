@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import McpToolset, StdioConnectionParams
 from mcp import StdioServerParameters
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 def _log(msg: str) -> None:
     print(f"[research_agent] {msg}", flush=True)

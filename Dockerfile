@@ -16,6 +16,7 @@ RUN npm install -g @playwright/mcp@latest
 
 # install chromium with all deps into known path
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PYTHONUNBUFFERED=1
 RUN npx -y playwright@latest install --with-deps chromium
 
 COPY requirements.txt .
