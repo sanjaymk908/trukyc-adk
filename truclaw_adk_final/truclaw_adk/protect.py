@@ -131,6 +131,21 @@ def _inject_truclaw_tools(agent: Any, user_id: str) -> None:
             log(f"[protect] could not inject truclaw_status: {e}")
 
 
+def _attach_guardrail(agent: Any) -> None:
+    name = getattr(agent, "name", "unknown")
+    tools = _agent_tools(agent)
+    existing = getattr(agent, "before_tool_callback", None)
+    if getattr(existing, "_truclaw_wrapped", False):
+        log(f"[protect] already protected agent={name} tools={len(tools)}")
+        return
+    try:
+        setattr(agent, "before_tool_callback", compose_callbacks(existing))
+        setattr(agent, _PATCHED_ATTR, True)
+        log(f"[protect] attached guardrail agent={name} tools={len(tools)}")
+    except Exception as e:
+        raise RuntimeError(f"TruClaw could not protect agent {name}: {e}")
+
+
 def protect_agent_tree(agent: Any, user_id: str = "default") -> Any:
     """
     Protect only the discovered user root_agent tree.
@@ -138,6 +153,8 @@ def protect_agent_tree(agent: Any, user_id: str = "default") -> Any:
     ADK/MCP internals.
     TruClaw meta-tools (truclaw_pair, truclaw_status) are injected on the
     root agent only to prevent orchestrator delegation loops.
+    Injection happens before guardrail attachment so the guardrail covers
+    injected tools too.
     """
     seen = set()
 
@@ -145,25 +162,15 @@ def protect_agent_tree(agent: Any, user_id: str = "default") -> Any:
         if id(a) in seen:
             return
         seen.add(id(a))
-        name = getattr(a, "name", "unknown")
+
+        # inject TruClaw meta-tools on root first (even if tools list is empty)
+        if is_root:
+            _inject_truclaw_tools(a, user_id)
+
         tools = _agent_tools(a)
 
         if tools:
-            existing = getattr(a, "before_tool_callback", None)
-            if getattr(existing, "_truclaw_wrapped", False):
-                log(f"[protect] already protected agent={name} tools={len(tools)}")
-            else:
-                try:
-                    setattr(a, "before_tool_callback", compose_callbacks(existing))
-                    setattr(a, _PATCHED_ATTR, True)
-                    log(f"[protect] attached guardrail agent={name} tools={len(tools)}")
-                except Exception as e:
-                    raise RuntimeError(
-                        f"TruClaw could not protect agent {name}: {e}"
-                    )
-
-            if is_root:
-                _inject_truclaw_tools(a, user_id)
+            _attach_guardrail(a)
 
         for child in _agent_sub_agents(a):
             walk(child, is_root=False)
