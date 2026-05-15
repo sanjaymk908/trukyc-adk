@@ -1,23 +1,18 @@
 #!/bin/bash
 set -e
 
-# ── config ──────────────────────────────────────────────
 PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 SERVICE_NAME="my-adk-agent"
-IMAGE="gcr.io/$PROJECT_ID/$SERVICE_NAME"
 
-# ── required env vars ───────────────────────────────────
 : "${GOOGLE_API_KEY:?Need GOOGLE_API_KEY}"
 : "${ANTHROPIC_API_KEY_TRUKYC:?Need ANTHROPIC_API_KEY_TRUKYC}"
 : "${SIMUL8OR_API_KEY:?Need SIMUL8OR_API_KEY}"
 TRUKYC_RELAY_URL="${TRUKYC_RELAY_URL:-https://trukyc-relay.trusources.workers.dev}"
 
-# ── enable APIs ─────────────────────────────────────────
 echo "Enabling GCP APIs..."
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
 
-# ── deploy ──────────────────────────────────────────────
 echo "Deploying to Cloud Run..."
 gcloud run deploy $SERVICE_NAME \
   --source . \
@@ -26,9 +21,7 @@ gcloud run deploy $SERVICE_NAME \
   --port 8080 \
   --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,ANTHROPIC_API_KEY_TRUKYC=$ANTHROPIC_API_KEY_TRUKYC,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL"
 
-# ── print URLs ──────────────────────────────────────────
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format="value(status.url)")
 echo ""
 echo "✅ Deployed: $SERVICE_URL"
 echo "🖥  Dev UI:   $SERVICE_URL/dev-ui/"
-echo "📱 Pair:     $SERVICE_URL/pair"

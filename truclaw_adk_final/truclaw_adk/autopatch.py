@@ -22,11 +22,22 @@ def install_autopatch() -> None:
     async def patched_run_async(self, *args, **kwargs):
         agent_id = id(self)
         name = getattr(self, "name", "unknown")
+
         if agent_id not in _PROTECTED_IDS:
-            log(f"[autopatch] protecting active agent tree root={name}")
-            protect_agent_tree(self)
+            # extract user_id from invocation context if available
+            user_id = "default"
+            try:
+                ctx = args[0] if args else kwargs.get("invocation_context")
+                if ctx is not None and hasattr(ctx, "user_id"):
+                    user_id = ctx.user_id
+            except Exception:
+                pass
+
+            log(f"[autopatch] protecting active agent tree root={name} userId={user_id}")
+            protect_agent_tree(self, user_id=user_id)
             _PROTECTED_IDS.add(agent_id)
-            log(f"[autopatch] active agent tree protected root={name}")
+            log(f"[autopatch] active agent tree protected root={name} userId={user_id}")
+
         async for event in original_run_async(self, *args, **kwargs):
             yield event
 
