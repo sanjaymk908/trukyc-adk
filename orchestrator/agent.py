@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
+from google.adk.tools import FunctionTool
+from google.adk.tools.tool_context import ToolContext
 from .sub_agents.trading_agent import trading_agent
 from .sub_agents.research_agent import research_agent
 from .sub_agents.email_agent import email_agent
@@ -13,6 +15,68 @@ print("🔥 LOADED orchestrator root agent")
 load_dotenv()
 
 MODEL = os.getenv("ADK_MODEL", "gemini-2.5-flash")
+
+
+def _resolve_user_id(tool_context: ToolContext) -> str:
+    try:
+        for attr in ("_invocation_context", "invocation_context"):
+            ctx = getattr(tool_context, attr, None)
+            if ctx is not None and hasattr(ctx, "user_id"):
+                return ctx.user_id
+    except Exception:
+        pass
+    return "default"
+
+
+async def truclaw_pair(tool_context: ToolContext) -> dict:
+    """Pair a TruClaw mobile device for biometric authorization. Call this when the user asks to pair their phone or TruClaw device."""
+    from truclaw_adk.pairing import start_pairing
+    user_id = _resolve_user_id(tool_context)
+    result = await start_pairing(user_id=user_id, start_background_poll=True)
+    if result.get("status") == "error":
+        return {"error": result.get("reason")}
+    return {
+        "message": (
+            f"Open this link on your iPhone to pair with TruClaw:\n"
+            f"{result['pairingLink']}\n\n"
+            f"Or scan the QR code at:\n"
+            f"{result['qrImageUrl']}"
+        ),
+        "pairingLink": result["pairingLink"],
+        "qrImageUrl": result["qrImageUrl"],
+        "sessionId": result["sessionId"],
+        "userId": user_id,
+    }
+
+
+async def truclaw_status(tool_context: ToolContext) -> dict:
+    """Check TruClaw pairing status for the current user. Call this when the user asks about their TruClaw pairing status or if their device is paired."""
+    from truclaw_adk.pairing import find_paired_devices_for_user
+    user_id = _resolve_user_id(tool_context)
+    devices = find_paired_devices_for_user(user_id)
+    if not devices:
+        return {
+            "paired": False,
+            "userId": user_id,
+            "message": (
+                f"No device paired for userId={user_id}. "
+                f"Ask me to pair your TruClaw device."
+            ),
+        }
+    return {
+        "paired": True,
+        "deviceCount": len(devices),
+        "userId": user_id,
+        "devices": [
+            {
+                "platform": d.get("platform", "unknown"),
+                "pairedAt": d.get("pairedAt", "unknown"),
+            }
+            for d in devices
+        ],
+        "message": f"{len(devices)} device(s) paired for userId={user_id}.",
+    }
+
 
 root_agent = LlmAgent(
     model=MODEL,
@@ -70,6 +134,10 @@ root_agent = LlmAgent(
         "Example: use source-specific trend agents first, use research_agent for validation, "
         "then use email_agent only if the user explicitly asks to send/share a report."
     ),
+    tools=[
+        FunctionTool(truclaw_pair),
+        FunctionTool(truclaw_status),
+    ],
     sub_agents=[
         research_agent,
         trading_agent,
