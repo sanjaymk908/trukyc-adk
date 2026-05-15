@@ -15,10 +15,10 @@ ENV PYTHONUNBUFFERED=1
 # install mcp first
 RUN npm install -g @playwright/mcp@latest
 
-# install chromium using the playwright bundled INSIDE @playwright/mcp
+# install chrome using the playwright bundled INSIDE @playwright/mcp
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     node /usr/lib/node_modules/@playwright/mcp/node_modules/playwright/cli.js \
-    install --with-deps chromium
+    install --with-deps chrome
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt

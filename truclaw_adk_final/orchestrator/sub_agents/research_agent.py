@@ -88,7 +88,6 @@ if CHROMIUM_PATH:
 
 MCP_ARGS = [
     "-y", "@playwright/mcp@latest",
-    "--browser", "chromium",
     "--no-sandbox",
 ]
 
