@@ -1,15 +1,18 @@
 import os
 import glob
 import subprocess
+import sys
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import McpToolset, StdioConnectionParams
 from mcp import StdioServerParameters
-import sys
+
 sys.stdout.reconfigure(line_buffering=True)
+
 
 def _log(msg: str) -> None:
     print(f"[research_agent] {msg}", flush=True)
+
 
 _log("module loading...")
 load_dotenv()
@@ -20,24 +23,14 @@ _log(f"model: {MODEL}")
 # ── environment diagnostics ───────────────────────────────────────────────────
 
 _log(f"PATH: {os.environ.get('PATH')}")
-_log(f"USER: {os.environ.get('USER', 'unknown')}")
-_log(f"HOME: {os.environ.get('HOME', 'unknown')}")
 _log(f"PLAYWRIGHT_BROWSERS_PATH: {os.environ.get('PLAYWRIGHT_BROWSERS_PATH', 'not set')}")
 
-# check npx
 try:
     npx_which = subprocess.check_output(["which", "npx"], text=True).strip()
     _log(f"which npx: {npx_which}")
 except Exception as e:
     _log(f"which npx failed: {e}")
 
-try:
-    npx_version = subprocess.check_output(["/usr/bin/npx", "--version"], text=True).strip()
-    _log(f"npx version: {npx_version}")
-except Exception as e:
-    _log(f"npx --version failed: {e}")
-
-# check node
 try:
     node_version = subprocess.check_output(["node", "--version"], text=True).strip()
     _log(f"node version: {node_version}")
@@ -48,10 +41,12 @@ except Exception as e:
 
 def _chromium_executable() -> str:
     patterns = [
+        "/ms-playwright/chromium-*/chrome-linux64/chrome",
         "/ms-playwright/chromium-*/chrome-linux/chrome",
+        "/ms-playwright/chromium_headless_shell-*/chrome-linux64/headless_shell",
         "/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell",
+        "/root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome",
         "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
-        "/home/*/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
@@ -65,23 +60,18 @@ def _chromium_executable() -> str:
     _log("chromium not found in any known path")
     return ""
 
+
 # list /ms-playwright contents
 try:
     ms_pw_contents = os.listdir("/ms-playwright")
     _log(f"/ms-playwright contents: {ms_pw_contents}")
-    for entry in ms_pw_contents:
-        sub = f"/ms-playwright/{entry}"
-        try:
-            _log(f"  {sub}: {os.listdir(sub)}")
-        except Exception:
-            pass
 except Exception as e:
     _log(f"/ms-playwright listing failed: {e}")
 
 CHROMIUM_PATH = _chromium_executable()
 _log(f"final chromium path: '{CHROMIUM_PATH}'")
 
-# ── verify chromium is executable ─────────────────────────────────────────────
+# ── verify chromium is executable ────────────────────────────────────────────
 
 if CHROMIUM_PATH:
     try:
@@ -93,24 +83,6 @@ if CHROMIUM_PATH:
         _log(f"chromium --version stderr: {result.stderr.strip()[:200]}")
     except Exception as e:
         _log(f"chromium --version failed: {e}")
-
-# ── verify npx can spawn playwright mcp ───────────────────────────────────────
-
-try:
-    result = subprocess.run(
-        ["/usr/bin/npx", "@playwright/mcp@latest", "--version"],
-        capture_output=True, text=True, timeout=15,
-        env={
-            **os.environ,
-            "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright",
-            "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        }
-    )
-    _log(f"playwright mcp --version stdout: {result.stdout.strip()}")
-    _log(f"playwright mcp --version stderr: {result.stderr.strip()[:200]}")
-    _log(f"playwright mcp --version returncode: {result.returncode}")
-except Exception as e:
-    _log(f"playwright mcp --version failed: {e}")
 
 # ── build MCP args ────────────────────────────────────────────────────────────
 
