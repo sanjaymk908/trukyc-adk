@@ -40,7 +40,6 @@ def _agent_sub_agents(agent: Any):
 
 
 def _make_pair_tool(user_id: str) -> Any:
-    """Build a truclaw_pair FunctionTool for this user_id."""
     from google.adk.tools import FunctionTool
 
     async def truclaw_pair() -> dict:
@@ -50,7 +49,12 @@ def _make_pair_tool(user_id: str) -> Any:
         if result.get("status") == "error":
             return {"error": result.get("reason")}
         return {
-            "message": f"Open this link on your iPhone to pair with TruClaw:\n{result['pairingLink']}\n\nOr scan the QR code at:\n{result['qrImageUrl']}",
+            "message": (
+                f"Open this link on your iPhone to pair with TruClaw:\n"
+                f"{result['pairingLink']}\n\n"
+                f"Or scan the QR code at:\n"
+                f"{result['qrImageUrl']}"
+            ),
             "pairingLink": result["pairingLink"],
             "qrImageUrl": result["qrImageUrl"],
             "sessionId": result["sessionId"],
@@ -58,29 +62,73 @@ def _make_pair_tool(user_id: str) -> Any:
         }
 
     truclaw_pair.__name__ = "truclaw_pair"
-    truclaw_pair.__doc__ = "Pair a TruClaw mobile device for biometric authorization. Call this when the user asks to pair their phone or TruClaw device."
+    truclaw_pair.__doc__ = (
+        "Pair a TruClaw mobile device for biometric authorization. "
+        "Call this when the user asks to pair their phone or TruClaw device."
+    )
     return FunctionTool(truclaw_pair)
 
 
-def _get_user_id_from_context(agent: Any) -> str:
-    """Best-effort extract userId from agent context at protect time."""
-    return "default"
+def _make_status_tool(user_id: str) -> Any:
+    from google.adk.tools import FunctionTool
+
+    async def truclaw_status() -> dict:
+        """Check TruClaw pairing status for the current user. Call this when the user asks about their TruClaw pairing status or if their device is paired."""
+        from .pairing import find_paired_devices_for_user
+        devices = find_paired_devices_for_user(user_id)
+        if not devices:
+            return {
+                "paired": False,
+                "userId": user_id,
+                "message": (
+                    f"No device paired for userId={user_id}. "
+                    f"Ask me to pair your TruClaw device."
+                ),
+            }
+        return {
+            "paired": True,
+            "deviceCount": len(devices),
+            "userId": user_id,
+            "devices": [
+                {
+                    "platform": d.get("platform", "unknown"),
+                    "pairedAt": d.get("pairedAt", "unknown"),
+                }
+                for d in devices
+            ],
+            "message": f"{len(devices)} device(s) paired for userId={user_id}.",
+        }
+
+    truclaw_status.__name__ = "truclaw_status"
+    truclaw_status.__doc__ = (
+        "Check TruClaw pairing status for the current user. "
+        "Call this when the user asks about their TruClaw pairing status "
+        "or if their device is paired."
+    )
+    return FunctionTool(truclaw_status)
 
 
-def _inject_pair_tool(agent: Any, user_id: str) -> None:
-    """Inject truclaw_pair tool into agent if not already present."""
+def _inject_truclaw_tools(agent: Any, user_id: str) -> None:
     tools = _agent_tools(agent)
     existing_names = [
         getattr(t, "name", None) or getattr(t, "__name__", None)
         for t in tools
     ]
+    name = getattr(agent, "name", "unknown")
+
     if "truclaw_pair" not in existing_names:
         try:
-            pair_tool = _make_pair_tool(user_id)
-            tools.append(pair_tool)
-            log(f"[protect] injected truclaw_pair tool agent={getattr(agent, 'name', 'unknown')}")
+            tools.append(_make_pair_tool(user_id))
+            log(f"[protect] injected truclaw_pair agent={name}")
         except Exception as e:
-            log(f"[protect] could not inject truclaw_pair tool: {e}")
+            log(f"[protect] could not inject truclaw_pair: {e}")
+
+    if "truclaw_status" not in existing_names:
+        try:
+            tools.append(_make_status_tool(user_id))
+            log(f"[protect] injected truclaw_status agent={name}")
+        except Exception as e:
+            log(f"[protect] could not inject truclaw_status: {e}")
 
 
 def protect_agent_tree(agent: Any, user_id: str = "default") -> Any:
@@ -88,10 +136,12 @@ def protect_agent_tree(agent: Any, user_id: str = "default") -> Any:
     Protect only the discovered user root_agent tree.
     This intentionally does NOT patch LlmAgent globally and does NOT touch
     ADK/MCP internals.
+    TruClaw meta-tools (truclaw_pair, truclaw_status) are injected on the
+    root agent only to prevent orchestrator delegation loops.
     """
     seen = set()
 
-    def walk(a: Any):
+    def walk(a: Any, is_root: bool = False):
         if id(a) in seen:
             return
         seen.add(id(a))
@@ -111,12 +161,14 @@ def protect_agent_tree(agent: Any, user_id: str = "default") -> Any:
                     raise RuntimeError(
                         f"TruClaw could not protect agent {name}: {e}"
                     )
-            _inject_pair_tool(a, user_id)
+
+            if is_root:
+                _inject_truclaw_tools(a, user_id)
 
         for child in _agent_sub_agents(a):
-            walk(child)
+            walk(child, is_root=False)
 
-    walk(agent)
+    walk(agent, is_root=True)
     assert_agent_tree_protected(agent)
     return agent
 
@@ -141,6 +193,6 @@ def assert_agent_tree_protected(agent: Any) -> None:
     walk(agent)
     if failures:
         raise RuntimeError(
-            "Unprotected tool-bearing ADK agents: " + ", join(failures)"
+            "Unprotected tool-bearing ADK agents: " + ", ".join(failures)
         )
     log("[protect] agent tree verified protected")
