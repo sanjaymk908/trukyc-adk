@@ -108,11 +108,12 @@ browser_toolset = McpToolset(
             command="/usr/bin/npx",
             args=MCP_ARGS,
             env=MCP_ENV,
-        )
+        ),
+        timeout=120.0,
     )
 )
 
-_log("McpToolset created")
+_log("McpToolset created with 120s timeout")
 
 # ── agent ─────────────────────────────────────────────────────────────────────
 
