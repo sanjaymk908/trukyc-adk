@@ -53,10 +53,16 @@ def register_chat_handler(app) -> None:
 
     @app.post("/chat")
     async def chat_webhook(request: Request):
+        raw = await request.body()
+        log(f"[chat] raw bytes: {raw[:500]}")
+
         try:
             body = await request.json()
-        except Exception:
+        except Exception as e:
+            log(f"[chat] json parse error: {e}")
             return JSONResponse({})
+
+        log(f"[chat] raw body: {str(body)[:500]}")
 
         event_type = body.get("type")
         log(f"[chat] event_type={event_type}")
@@ -96,6 +102,7 @@ def register_chat_handler(app) -> None:
                 log(f"[chat] agent error userId={user_id} error={e}")
                 reply = f"Sorry, I encountered an error: {e}"
 
+            log(f"[chat] reply preview: {reply[:100]}")
             return JSONResponse({"text": reply})
 
         return JSONResponse({})
