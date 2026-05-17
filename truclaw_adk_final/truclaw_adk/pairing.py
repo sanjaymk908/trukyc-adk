@@ -20,6 +20,8 @@ PAIRING_DEEPLINK_BASE = os.getenv(
     "TRUCLAW_PAIRING_DEEPLINK_BASE",
     "https://aasa.trusources.ai/openclaw",
 )
+GCS_BUCKET = os.getenv("TRUCLAW_GCS_BUCKET", "")
+GCS_BLOB = "truclaw/paired.json"
 
 
 def _now_iso() -> str:
@@ -38,7 +40,48 @@ def _composite_key(user_id: str, public_key: str) -> str:
     return f"{user_id}:{_public_key_hash(public_key)}"
 
 
+# ── GCS persistence ───────────────────────────────────────────────────────────
+
+def _gcs_download() -> None:
+    """Pull paired.json from GCS into local path if not already present."""
+    if not GCS_BUCKET:
+        return
+    if PAIRED_PATH.exists():
+        return
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(GCS_BUCKET).blob(GCS_BLOB)
+        if blob.exists():
+            PAIRED_PATH.parent.mkdir(parents=True, exist_ok=True)
+            blob.download_to_filename(str(PAIRED_PATH))
+            log(f"[pair] loaded paired.json from gs://{GCS_BUCKET}/{GCS_BLOB}")
+        else:
+            log(f"[pair] no paired.json in GCS yet — starting fresh")
+    except Exception as e:
+        log(f"[pair] GCS download error: {e}")
+
+
+def _gcs_upload() -> None:
+    """Push local paired.json to GCS after every write."""
+    if not GCS_BUCKET:
+        return
+    if not PAIRED_PATH.exists():
+        return
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(GCS_BUCKET).blob(GCS_BLOB)
+        blob.upload_from_filename(str(PAIRED_PATH))
+        log(f"[pair] saved paired.json to gs://{GCS_BUCKET}/{GCS_BLOB}")
+    except Exception as e:
+        log(f"[pair] GCS upload error: {e}")
+
+
+# ── local storage ─────────────────────────────────────────────────────────────
+
 def load_paired_devices() -> Dict[str, Dict[str, Any]]:
+    _gcs_download()
     if not PAIRED_PATH.exists():
         return {}
     with PAIRED_PATH.open("r", encoding="utf-8") as f:
@@ -54,7 +97,10 @@ def save_paired_devices(devices: Dict[str, Dict[str, Any]]) -> None:
     with tmp.open("w", encoding="utf-8") as f:
         json.dump(devices, f, indent=2, sort_keys=True)
     tmp.replace(PAIRED_PATH)
+    _gcs_upload()
 
+
+# ── pairing logic ─────────────────────────────────────────────────────────────
 
 def save_pairing(session_id: str, data: Dict[str, Any], user_id: str = "default") -> str:
     required = ["publicKey", "apnsToken", "fcmToken", "platform"]
