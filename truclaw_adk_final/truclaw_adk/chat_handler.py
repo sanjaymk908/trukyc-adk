@@ -9,7 +9,7 @@ ADK_BASE_URL = os.getenv("ADK_BASE_URL", "http://localhost:8080")
 
 
 async def _ensure_session(user_id: str, session_id: str) -> None:
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             await client.post(
                 f"{ADK_BASE_URL}/apps/{ADK_APP_NAME}/users/{user_id}/sessions/{session_id}",
@@ -21,7 +21,7 @@ async def _ensure_session(user_id: str, session_id: str) -> None:
 
 
 async def _run_agent(user_id: str, session_id: str, text: str) -> str:
-    async with httpx.AsyncClient(timeout=25.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
             f"{ADK_BASE_URL}/run",
             headers={"Content-Type": "application/json"},
@@ -54,7 +54,7 @@ def register_chat_handler(app) -> None:
     @app.post("/chat")
     async def chat_webhook(request: Request):
         raw = await request.body()
-        log(f"[chat] raw bytes: {raw[:500]}")
+        log(f"[chat] raw bytes: {raw[:200]}")
 
         try:
             body = await request.json()
