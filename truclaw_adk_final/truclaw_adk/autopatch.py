@@ -22,7 +22,6 @@ def install_autopatch() -> None:
     async def patched_run_async(self, *args, **kwargs):
         agent_id = id(self)
         name = getattr(self, "name", "unknown")
-
         if agent_id not in _PROTECTED_IDS:
             user_id = "default"
             try:
@@ -31,12 +30,10 @@ def install_autopatch() -> None:
                     user_id = ctx.user_id
             except Exception:
                 pass
-
             log(f"[autopatch] protecting active agent tree root={name} userId={user_id}")
             protect_agent_tree(self, user_id=user_id)
             _PROTECTED_IDS.add(agent_id)
             log(f"[autopatch] active agent tree protected root={name} userId={user_id}")
-
         async for event in original_run_async(self, *args, **kwargs):
             yield event
 
@@ -48,6 +45,38 @@ def install_autopatch() -> None:
         "no import hook, no constructor patch"
     )
     _try_register_pair_route()
+    _patch_mcp_stdio_timeout()
+
+
+def _patch_mcp_stdio_timeout() -> None:
+    try:
+        from google.adk.tools.mcp_tool import session_context as sc
+        original_run = sc.SessionContext._run
+
+        async def patched_run(self):
+            original_set = self._ready_event.set
+
+            def patched_set():
+                if self._session is not None:
+                    from datetime import timedelta
+                    timeout = timedelta(seconds=120)
+                    try:
+                        self._session._read_timeout_seconds = timeout
+                    except Exception:
+                        pass
+                    try:
+                        self._session._session_read_timeout_seconds = timeout
+                    except Exception:
+                        pass
+                original_set()
+
+            self._ready_event.set = patched_set
+            await original_run(self)
+
+        sc.SessionContext._run = patched_run
+        log("[autopatch] patched MCP stdio read timeout to 120s")
+    except Exception as e:
+        log(f"[autopatch] could not patch MCP stdio timeout: {e}")
 
 
 def _try_register_pair_route() -> None:
