@@ -24,7 +24,6 @@ def install_autopatch() -> None:
         name = getattr(self, "name", "unknown")
 
         if agent_id not in _PROTECTED_IDS:
-            # extract user_id from invocation context if available
             user_id = "default"
             try:
                 ctx = args[0] if args else kwargs.get("invocation_context")
@@ -68,6 +67,11 @@ def _try_register_pair_route() -> None:
                 register_pair_route(app)
                 app.state._truclaw_pair_route_registered = True
                 log("[autopatch] /pair route registered")
+            if not getattr(app.state, "_truclaw_chat_registered", False):
+                from .chat_handler import register_chat_handler
+                register_chat_handler(app)
+                app.state._truclaw_chat_registered = True
+                log("[autopatch] /chat route registered")
             return app
 
         _patched_get_fast_api_app._truclaw_pair_route_patched = True
