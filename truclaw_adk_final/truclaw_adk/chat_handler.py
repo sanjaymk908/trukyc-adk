@@ -9,7 +9,7 @@ ADK_APP_NAME = os.getenv("ADK_APP_NAME", "orchestrator")
 ADK_BASE_URL = os.getenv("ADK_BASE_URL", "http://localhost:8080")
 
 
-async def _get_chat_access_token() -> str:
+def _get_chat_access_token_sync() -> str:
     """Get OAuth2 access token using Application Default Credentials."""
     import google.auth
     import google.auth.transport.requests
@@ -47,23 +47,11 @@ async def _post_chat_message(space_name: str, thread_name: str, text: str) -> No
                 },
                 json=payload,
             )
+            log(f"[chat] post status={resp.status_code} body={resp.text[:200]}")
             resp.raise_for_status()
             log(f"[chat] posted reply to {space_name}")
     except Exception as e:
         log(f"[chat] failed to post reply: {e}")
-
-
-def _get_chat_access_token_sync() -> str:
-    """Sync version for executor."""
-    import google.auth
-    import google.auth.transport.requests
-
-    credentials, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/chat.bot"]
-    )
-    auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)
-    return credentials.token
 
 
 async def _ensure_session(user_id: str, session_id: str) -> None:
