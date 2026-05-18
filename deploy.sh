@@ -23,26 +23,21 @@ gcloud run deploy $SERVICE_NAME \
   --region $REGION \
   --allow-unauthenticated \
   --port 8080 \
-  --no-cpu-throttling \
-  --min-instances=3 \
   --project=$PROJECT_ID \
-  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,ANTHROPIC_API_KEY_TRUKYC=$ANTHROPIC_API_KEY_TRUKYC,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,PE_API_KEY=$PE_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,ADK_APP_NAME=orchestrator"
+  --timeout=3600 \
+  --min-instances=1 \
+  --no-cpu-throttling \
+  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,ANTHROPIC_API_KEY_TRUKYC=$ANTHROPIC_API_KEY_TRUKYC,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,PE_API_KEY=$PE_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,ADK_APP_NAME=orchestrator,ADK_BASE_URL=http://localhost:8080"
 
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
   --region $REGION \
   --project=$PROJECT_ID \
   --format="value(status.url)")
 
-gcloud run services update $SERVICE_NAME \
-  --region $REGION \
-  --project=$PROJECT_ID \
-  --update-env-vars="ADK_BASE_URL=$SERVICE_URL"
-
 echo ""
 echo "✅ Deployed: $SERVICE_URL"
 echo "🖥  Dev UI:   $SERVICE_URL/dev-ui/"
 echo "📱 Pair:     $SERVICE_URL/pair"
 echo ""
-echo "ℹ️  ADK_BASE_URL has been set to: $SERVICE_URL"
-echo "   To update manually if needed:"
-echo "   gcloud run services update $SERVICE_NAME --region $REGION --project=$PROJECT_ID --update-env-vars=\"ADK_BASE_URL=$SERVICE_URL\""
+echo "ℹ️  Chat API endpoint: $SERVICE_URL/chat"
+echo "   Update Google Chat API config if URL changed."
