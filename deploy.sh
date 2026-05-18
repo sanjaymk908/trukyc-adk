@@ -13,7 +13,8 @@ TRUKYC_RELAY_URL="${TRUKYC_RELAY_URL:-https://trukyc-relay.trusources.workers.de
 TRUCLAW_GCS_BUCKET="${TRUCLAW_GCS_BUCKET:-truclaw-state-browser-ml}"
 
 echo "Enabling GCP APIs..."
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com secretmanager.googleapis.com
 
 echo "Deploying to Cloud Run..."
 gcloud run deploy $SERVICE_NAME \
@@ -21,7 +22,8 @@ gcloud run deploy $SERVICE_NAME \
   --region $REGION \
   --allow-unauthenticated \
   --port 8080 \
-  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,ANTHROPIC_API_KEY_TRUKYC=$ANTHROPIC_API_KEY_TRUKYC,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,PE_API_KEY=$PE_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,ADK_APP_NAME=orchestrator"
+  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,ANTHROPIC_API_KEY_TRUKYC=$ANTHROPIC_API_KEY_TRUKYC,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,PE_API_KEY=$PE_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,ADK_APP_NAME=orchestrator" \
+  --set-secrets="GOOGLE_SERVICE_ACCOUNT_JSON=truclaw-chat-bot-key:latest"
 
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format="value(status.url)")
 
