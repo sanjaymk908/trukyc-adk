@@ -109,11 +109,11 @@ browser_toolset = McpToolset(
             args=MCP_ARGS,
             env=MCP_ENV,
         ),
-        timeout=120.0,
+        timeout=300.0,
     )
 )
 
-_log("McpToolset created with 120s timeout")
+_log("McpToolset created with 300s timeout")
 
 # ── agent ─────────────────────────────────────────────────────────────────────
 
