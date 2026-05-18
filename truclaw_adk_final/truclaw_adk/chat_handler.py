@@ -1,6 +1,5 @@
 import os
 import asyncio
-import json
 from fastapi import Request
 from fastapi.responses import JSONResponse
 import httpx
@@ -8,73 +7,36 @@ from .logging import log
 
 ADK_APP_NAME = os.getenv("ADK_APP_NAME", "orchestrator")
 ADK_BASE_URL = os.getenv("ADK_BASE_URL", "http://localhost:8080")
-GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 
 
 async def _get_chat_access_token() -> str:
-    """Get OAuth2 access token for Google Chat API using service account."""
-    import time
-    import json
-    import base64
+    """Get OAuth2 access token using Application Default Credentials."""
+    import google.auth
+    import google.auth.transport.requests
 
-    if not GOOGLE_SERVICE_ACCOUNT_JSON:
-        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON not configured")
-
-    sa = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-
-    # build JWT
-    now = int(time.time())
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "RS256", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
-
-    payload = base64.urlsafe_b64encode(json.dumps({
-        "iss": sa["client_email"],
-        "scope": "https://www.googleapis.com/auth/chat.bot",
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": now,
-        "exp": now + 3600,
-    }).encode()).rstrip(b"=").decode()
-
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.backends import default_backend
-
-    private_key = serialization.load_pem_private_key(
-        sa["private_key"].encode(),
-        password=None,
-        backend=default_backend()
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/chat.bot"]
     )
-
-    signing_input = f"{header}.{payload}".encode()
-    signature = private_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
-    sig_b64 = base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
-
-    jwt_token = f"{header}.{payload}.{sig_b64}"
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                "assertion": jwt_token,
-            }
-        )
-        resp.raise_for_status()
-        return resp.json()["access_token"]
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    return credentials.token
 
 
 async def _post_chat_message(space_name: str, thread_name: str, text: str) -> None:
     """Post a message to Google Chat space via REST API."""
     try:
-        token = await _get_chat_access_token()
+        token = await asyncio.get_event_loop().run_in_executor(
+            None, _get_chat_access_token_sync
+        )
         space_id = space_name.replace("spaces/", "")
-        url = f"https://chat.googleapis.com/v1/spaces/{space_id}/messages"
+        url = (
+            f"https://chat.googleapis.com/v1/spaces/{space_id}/messages"
+            f"?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
+        )
 
-        payload = {
-            "text": text,
-            "thread": {"name": thread_name},
-        }
+        payload = {"text": text}
+        if thread_name:
+            payload["thread"] = {"name": thread_name}
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
@@ -89,6 +51,19 @@ async def _post_chat_message(space_name: str, thread_name: str, text: str) -> No
             log(f"[chat] posted reply to {space_name}")
     except Exception as e:
         log(f"[chat] failed to post reply: {e}")
+
+
+def _get_chat_access_token_sync() -> str:
+    """Sync version for executor."""
+    import google.auth
+    import google.auth.transport.requests
+
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/chat.bot"]
+    )
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    return credentials.token
 
 
 async def _ensure_session(user_id: str, session_id: str) -> None:
