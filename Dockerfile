@@ -20,6 +20,14 @@ RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     node /usr/lib/node_modules/@playwright/mcp/node_modules/playwright/cli.js \
     install --with-deps chrome
 
+# install PortEden for emails
+# install porteden CLI
+RUN curl -fsSL https://github.com/porteden/cli/releases/download/v0.2.1/porteden_0.2.1_linux_amd64.tar.gz \
+    -o /tmp/porteden.tar.gz \
+    && tar -xzf /tmp/porteden.tar.gz -C /usr/local/bin porteden \
+    && chmod +x /usr/local/bin/porteden \
+    && rm /tmp/porteden.tar.gz
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 RUN pip install git+https://github.com/sanjaymk908/trukyc-adk.git@main#subdirectory=truclaw_adk_final
