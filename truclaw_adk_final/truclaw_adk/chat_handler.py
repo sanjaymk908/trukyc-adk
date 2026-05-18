@@ -47,7 +47,7 @@ async def _post_chat_message(space_name: str, thread_name: str, text: str) -> No
                 },
                 json=payload,
             )
-            log(f"[chat] post status={resp.status_code} body={resp.text[:200]}")
+            log(f"[chat] post status={resp.status_code} body={resp.text}")
             resp.raise_for_status()
             log(f"[chat] posted reply to {space_name}")
     except Exception as e:
