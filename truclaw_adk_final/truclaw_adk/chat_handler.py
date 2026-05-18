@@ -11,32 +11,44 @@ ADK_BASE_URL = os.getenv("ADK_BASE_URL", "http://localhost:8080")
 
 def _get_chat_access_token_sync() -> str:
     """Get OAuth2 access token using Application Default Credentials."""
-    import google.auth
-    import google.auth.transport.requests
+    try:
+        import google.auth
+        import google.auth.transport.requests
 
-    credentials, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/chat.bot"]
-    )
-    auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)
-    return credentials.token
+        log("[chat] getting ADC token...")
+        credentials, project = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/chat.bot"]
+        )
+        log(f"[chat] ADC project={project} credentials_type={type(credentials).__name__}")
+        auth_req = google.auth.transport.requests.Request()
+        credentials.refresh(auth_req)
+        log(f"[chat] token obtained valid={credentials.valid} expiry={credentials.expiry}")
+        return credentials.token
+    except Exception as e:
+        log(f"[chat] failed to get ADC token: {type(e).__name__}: {e}")
+        raise
 
 
 async def _post_chat_message(space_name: str, thread_name: str, text: str) -> None:
     """Post a message to Google Chat space via REST API."""
+    log(f"[chat] _post_chat_message space={space_name} thread={thread_name}")
     try:
         token = await asyncio.get_event_loop().run_in_executor(
             None, _get_chat_access_token_sync
         )
+        log(f"[chat] token acquired length={len(token) if token else 0}")
+
         space_id = space_name.replace("spaces/", "")
         url = (
             f"https://chat.googleapis.com/v1/spaces/{space_id}/messages"
             f"?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
         )
+        log(f"[chat] posting to url={url}")
 
         payload = {"text": text}
         if thread_name:
             payload["thread"] = {"name": thread_name}
+        log(f"[chat] payload={str(payload)[:200]}")
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
@@ -49,40 +61,53 @@ async def _post_chat_message(space_name: str, thread_name: str, text: str) -> No
             )
             log(f"[chat] post status={resp.status_code} body={resp.text}")
             resp.raise_for_status()
-            log(f"[chat] posted reply to {space_name}")
+            log(f"[chat] posted reply successfully to {space_name}")
+    except httpx.HTTPStatusError as e:
+        log(f"[chat] HTTP error posting reply: status={e.response.status_code} body={e.response.text}")
+    except httpx.TimeoutException as e:
+        log(f"[chat] timeout posting reply: {e}")
     except Exception as e:
-        log(f"[chat] failed to post reply: {e}")
+        log(f"[chat] unexpected error posting reply: {type(e).__name__}: {e}")
 
 
 async def _ensure_session(user_id: str, session_id: str) -> None:
+    log(f"[chat] ensuring session userId={user_id} sessionId={session_id}")
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
-            await client.post(
+            resp = await client.post(
                 f"{ADK_BASE_URL}/apps/{ADK_APP_NAME}/users/{user_id}/sessions/{session_id}",
                 headers={"Content-Type": "application/json"},
                 json={},
             )
+            log(f"[chat] session status={resp.status_code}")
         except Exception as e:
-            log(f"[chat] session create error: {e}")
+            log(f"[chat] session create error: {type(e).__name__}: {e}")
 
 
 async def _run_agent(user_id: str, session_id: str, text: str) -> str:
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            f"{ADK_BASE_URL}/run",
-            headers={"Content-Type": "application/json"},
-            json={
-                "appName": ADK_APP_NAME,
-                "userId": user_id,
-                "sessionId": session_id,
-                "newMessage": {
-                    "role": "user",
-                    "parts": [{"text": text}],
+    log(f"[chat] running agent userId={user_id} sessionId={session_id}")
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{ADK_BASE_URL}/run",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "appName": ADK_APP_NAME,
+                    "userId": user_id,
+                    "sessionId": session_id,
+                    "newMessage": {
+                        "role": "user",
+                        "parts": [{"text": text}],
+                    },
                 },
-            },
-        )
-        resp.raise_for_status()
-        events = resp.json()
+            )
+            log(f"[chat] agent run status={resp.status_code}")
+            resp.raise_for_status()
+            events = resp.json()
+            log(f"[chat] agent returned {len(events)} events")
+    except Exception as e:
+        log(f"[chat] agent run error: {type(e).__name__}: {e}")
+        raise
 
     for event in reversed(events):
         content = event.get("content", {})
@@ -103,15 +128,17 @@ async def _process_and_send(
     thread_name: str,
 ) -> None:
     """Process agent request and post reply via Chat API."""
+    log(f"[chat] _process_and_send started userId={user_id}")
     try:
         await _ensure_session(user_id, session_id)
         reply = await _run_agent(user_id, session_id, text)
     except Exception as e:
-        log(f"[chat] agent error userId={user_id} error={e}")
+        log(f"[chat] agent error userId={user_id} error={type(e).__name__}: {e}")
         reply = f"Sorry, I encountered an error: {e}"
 
     log(f"[chat] reply preview: {reply[:100]}")
     await _post_chat_message(space_name, thread_name, reply)
+    log(f"[chat] _process_and_send complete userId={user_id}")
 
 
 def register_chat_handler(app) -> None:
@@ -124,7 +151,7 @@ def register_chat_handler(app) -> None:
         try:
             body = await request.json()
         except Exception as e:
-            log(f"[chat] json parse error: {e}")
+            log(f"[chat] json parse error: {type(e).__name__}: {e}")
             return JSONResponse({})
 
         log(f"[chat] raw body: {str(body)[:500]}")
