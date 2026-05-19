@@ -1,4 +1,6 @@
-import json, time, hashlib
+import json
+import time
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List
 from . import config
@@ -6,6 +8,30 @@ from .logging import log
 
 LEDGER_PATH = config.STATE_DIR / "security-ledger.jsonl"
 MEMORY_PATH = config.STATE_DIR / "memory.md"
+
+GCS_LEDGER_BLOB = "truclaw/security-ledger.jsonl"
+GCS_MEMORY_BLOB = "truclaw/memory.md"
+
+_ledger_loaded = False
+_memory_loaded = False
+
+
+def _ensure_ledger_loaded() -> None:
+    global _ledger_loaded
+    if _ledger_loaded:
+        return
+    from .gcs_storage import gcs_download
+    gcs_download(LEDGER_PATH, GCS_LEDGER_BLOB)
+    _ledger_loaded = True
+
+
+def _ensure_memory_loaded() -> None:
+    global _memory_loaded
+    if _memory_loaded:
+        return
+    from .gcs_storage import gcs_download
+    gcs_download(MEMORY_PATH, GCS_MEMORY_BLOB)
+    _memory_loaded = True
 
 
 def _jsonable(x: Any) -> Any:
@@ -17,19 +43,31 @@ def _jsonable(x: Any) -> Any:
 
 
 def append_event(event: Dict[str, Any]) -> str:
+    _ensure_ledger_loaded()
     config.STATE_DIR.mkdir(parents=True, exist_ok=True)
     event = dict(event)
     event.setdefault("ts", time.time())
-    event.setdefault("id", hashlib.sha256(json.dumps(event, sort_keys=True, default=str).encode()).hexdigest()[:16])
+    event.setdefault(
+        "id",
+        hashlib.sha256(
+            json.dumps(event, sort_keys=True, default=str).encode()
+        ).hexdigest()[:16],
+    )
     event = _jsonable(event)
     with LEDGER_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, sort_keys=True, default=str) + "\n")
+    from .gcs_storage import gcs_upload
+    gcs_upload(LEDGER_PATH, GCS_LEDGER_BLOB)
     _append_memory(event)
-    log(f"[ledger] appended id={event['id']} tool={event.get('toolName')} allowed={event.get('allowed')} dangerous={event.get('dangerous')}")
+    log(
+        f"[ledger] appended id={event['id']} tool={event.get('toolName')} "
+        f"allowed={event.get('allowed')} dangerous={event.get('dangerous')}"
+    )
     return event["id"]
 
 
 def read_events(limit: int = 100) -> List[Dict[str, Any]]:
+    _ensure_ledger_loaded()
     if not LEDGER_PATH.exists():
         return []
     lines = LEDGER_PATH.read_text(encoding="utf-8").splitlines()[-limit:]
@@ -50,7 +88,9 @@ def prior_summary(limit: int = 30) -> str:
     for i, e in enumerate(events, 1):
         args = json.dumps(e.get("toolArgs"), default=str)[:1200]
         reason = e.get("reason") or e.get("risk", {}).get("reason") or "n/a"
-        lines.append(f"{i}. {e.get('toolName')}({args}) — {reason} — allowed={e.get('allowed')}")
+        lines.append(
+            f"{i}. {e.get('toolName')}({args}) — {reason} — allowed={e.get('allowed')}"
+        )
     return "\n".join(lines)
 
 
@@ -60,12 +100,51 @@ def dangerous_prior_flag(limit: int = 5) -> str:
         return ""
     lines = []
     for e in dangerous[-limit:]:
-        lines.append(f"- {e.get('toolName')}({json.dumps(e.get('toolArgs'), default=str)[:800]}) — {e.get('reason')}")
+        lines.append(
+            f"- {e.get('toolName')}({json.dumps(e.get('toolArgs'), default=str)[:800]}) "
+            f"— {e.get('reason')}"
+        )
     return "\n\nIMPORTANT — prior dangerous actions:\n" + "\n".join(lines)
 
 
 def _append_memory(e: Dict[str, Any]) -> None:
+    _ensure_memory_loaded()
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    line = f"- {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(e.get('ts', time.time())))} {e.get('toolName')} dangerous={e.get('dangerous')} allowed={e.get('allowed')} reason={e.get('reason')}\n"
+    line = (
+        f"- {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(e.get('ts', time.time())))} "
+        f"{e.get('toolName')} dangerous={e.get('dangerous')} "
+        f"allowed={e.get('allowed')} reason={e.get('reason')}\n"
+    )
     with MEMORY_PATH.open("a", encoding="utf-8") as f:
         f.write(line)
+    from .gcs_storage import gcs_upload
+    gcs_upload(MEMORY_PATH, GCS_MEMORY_BLOB)
+
+
+def clear_ledger() -> None:
+    """Admin: clear local ledger and GCS blob."""
+    if LEDGER_PATH.exists():
+        LEDGER_PATH.unlink()
+    from .gcs_storage import gcs_delete
+    gcs_delete(GCS_LEDGER_BLOB)
+    global _ledger_loaded
+    _ledger_loaded = False
+    log("[ledger] ledger cleared")
+
+
+def clear_memory() -> None:
+    """Admin: clear local memory and GCS blob."""
+    if MEMORY_PATH.exists():
+        MEMORY_PATH.unlink()
+    from .gcs_storage import gcs_delete
+    gcs_delete(GCS_MEMORY_BLOB)
+    global _memory_loaded
+    _memory_loaded = False
+    log("[ledger] memory cleared")
+
+
+def clear_all() -> None:
+    """Admin: clear both ledger and memory."""
+    clear_ledger()
+    clear_memory()
+    log("[ledger] all state cleared")
