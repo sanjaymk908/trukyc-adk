@@ -336,7 +336,6 @@ TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
 5. Match → command runs. No match → rejected with error.
 
 Nobody with only GCS or Cloud Run console access can run admin commands without knowing the original key.
-```
 
 ---
 
