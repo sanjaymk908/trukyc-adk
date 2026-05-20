@@ -10,7 +10,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN python3 -m playwright install --with-deps chromium
 ENV PYTHONUNBUFFERED=1
 
 # install mcp first
@@ -32,6 +31,7 @@ RUN curl -fsSL https://github.com/porteden/cli/releases/download/v0.2.1/porteden
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 RUN pip install git+https://github.com/sanjaymk908/trukyc-adk.git@main#subdirectory=truclaw_adk_final
+RUN python3 -m playwright install --with-deps chromium
 
 COPY . .
 RUN truclaw install && python3 -c "import truclaw_adk.autopatch; print('autopatch OK')"
