@@ -177,6 +177,68 @@ export TRUCLAW_STATE_DIR="./.truclaw"
 
 ---
 
+
+## Admin CLI
+
+The admin CLI manages the security ledger and memory from the command line. Admin commands require `TRUCLAW_ADMIN_KEY`.
+
+The raw admin key is never stored. Cloud Run stores only `TRUCLAW_ADMIN_KEY_HASH`, a SHA256 hash of the key.
+
+### One-time setup
+
+```bash
+chmod +x admin.sh
+```
+
+Choose an admin key:
+
+```bash
+export TRUCLAW_ADMIN_KEY="your-secret-key"
+./admin.sh setup-key
+```
+
+This stores only the SHA256 hash on Cloud Run. Keep the original key safe; it cannot be recovered from the hash.
+
+To persist the hash across future redeploys:
+
+```bash
+export TRUCLAW_ADMIN_KEY_HASH="$(printf '%s' 'your-secret-key' | shasum -a 256 | cut -d ' ' -f 1)"
+./deploy.sh
+```
+
+### Commands
+
+```bash
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-ledger
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-memory
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-ledger
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-memory
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
+```
+
+### What each command does
+
+| Command | Description |
+|---|---|
+| `setup-key` | Hashes `TRUCLAW_ADMIN_KEY` and stores the hash on Cloud Run. |
+| `view-ledger` | Prints recent security events from GCS. |
+| `view-memory` | Prints the classifier memory file from GCS. |
+| `clear-ledger` | Deletes the security ledger locally and from GCS. |
+| `clear-memory` | Deletes the classifier memory file locally and from GCS. |
+| `clear-all` | Clears both ledger and memory. Useful before demos. |
+
+### How authentication works
+
+1. Admin runs `TRUCLAW_ADMIN_KEY=your-key ./admin.sh COMMAND`.
+2. `admin.sh` reads `TRUCLAW_ADMIN_KEY_HASH` from Cloud Run.
+3. A Cloud Run Job runs inside the container.
+4. `admin_cli.py` hashes the provided key and compares it to the stored hash.
+5. Match → command runs. No match → rejected.
+
+Someone with only GCS or Cloud Run console access cannot run admin commands without the original key.
+ 
+---
+
 ## Logs
 
 All TruClaw events are prefixed with `[OPENCLAW] TruClaw`:
@@ -266,67 +328,6 @@ If approval is denied, expired, or invalid:
 {"status": "blocked", "blocked_by": "TruClaw"}
 ```
 
----
-
-## Admin CLI
-
-The admin CLI manages the security ledger and memory from the command line. Admin commands require `TRUCLAW_ADMIN_KEY`.
-
-The raw admin key is never stored. Cloud Run stores only `TRUCLAW_ADMIN_KEY_HASH`, a SHA256 hash of the key.
-
-### One-time setup
-
-```bash
-chmod +x admin.sh
-```
-
-Choose an admin key:
-
-```bash
-export TRUCLAW_ADMIN_KEY="your-secret-key"
-./admin.sh setup-key
-```
-
-This stores only the SHA256 hash on Cloud Run. Keep the original key safe; it cannot be recovered from the hash.
-
-To persist the hash across future redeploys:
-
-```bash
-export TRUCLAW_ADMIN_KEY_HASH="$(printf '%s' 'your-secret-key' | shasum -a 256 | cut -d ' ' -f 1)"
-./deploy.sh
-```
-
-### Commands
-
-```bash
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-ledger
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-memory
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-ledger
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-memory
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
-```
-
-### What each command does
-
-| Command | Description |
-|---|---|
-| `setup-key` | Hashes `TRUCLAW_ADMIN_KEY` and stores the hash on Cloud Run. |
-| `view-ledger` | Prints recent security events from GCS. |
-| `view-memory` | Prints the classifier memory file from GCS. |
-| `clear-ledger` | Deletes the security ledger locally and from GCS. |
-| `clear-memory` | Deletes the classifier memory file locally and from GCS. |
-| `clear-all` | Clears both ledger and memory. Useful before demos. |
-
-### How authentication works
-
-1. Admin runs `TRUCLAW_ADMIN_KEY=your-key ./admin.sh COMMAND`.
-2. `admin.sh` reads `TRUCLAW_ADMIN_KEY_HASH` from Cloud Run.
-3. A Cloud Run Job runs inside the container.
-4. `admin_cli.py` hashes the provided key and compares it to the stored hash.
-5. Match → command runs. No match → rejected.
-
-Someone with only GCS or Cloud Run console access cannot run admin commands without the original key.
- 
 ---
 
 ## License
