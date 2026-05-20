@@ -10,6 +10,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN python3 -m playwright install --with-deps chromium
 ENV PYTHONUNBUFFERED=1
 
 # install mcp first

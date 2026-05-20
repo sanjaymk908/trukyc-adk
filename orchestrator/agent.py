@@ -10,6 +10,7 @@ from .sub_agents.hn_agent import hn_agent
 from .sub_agents.reddit_agent import reddit_agent
 from .sub_agents.x_agent import x_agent
 from .sub_agents.discord_agent import discord_agent
+from .sub_agents.browser_agent import browser_agent
 
 print("🔥 LOADED orchestrator root agent")
 load_dotenv()
@@ -105,8 +106,8 @@ root_agent = LlmAgent(
         "- x_agent: Twitter/X public trend discovery using browser-accessible sources.\n"
         "- discord_agent: Discord/community trend discovery using public/browser-accessible sources.\n\n"
         "Routing rules:\n"
-        "- If the user says navigate, open, browse, visit, read a site, or gives a URL, "
-        "transfer to research_agent.\n"
+        "- If the user says navigate, open, browse, visit, read a site, gives a URL, "
+        "or needs JavaScript execution on a page, transfer to browser_agent.\n"
         "- If the user asks for positions, holdings, portfolio, current trades, open trades, "
         "buy, or sell, transfer to trading_agent.\n"
         "- If the user asks to send, draft, reply, forward, or manage email, transfer to email_agent.\n"
@@ -139,6 +140,7 @@ root_agent = LlmAgent(
         FunctionTool(truclaw_status),
     ],
     sub_agents=[
+        browser_agent, 
         research_agent,
         trading_agent,
         email_agent,
