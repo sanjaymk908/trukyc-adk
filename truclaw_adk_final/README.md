@@ -121,58 +121,6 @@ Open the pairing link on your iPhone. The TruClaw app completes pairing automati
 
 ---
 
-## Admin CLI
-
-The admin CLI manages the security ledger and memory from the command line. Only users with the admin key can run admin commands. The actual key is never stored — only its SHA256 hash is stored on Cloud Run.
-
-### One-time setup
-
-```bash
-chmod +x admin.sh
-export TRUCLAW_ADMIN_KEY="your-secret-key"
-./admin.sh setup-key
-```
-
-To persist the hash across redeploys, generate it and set before deploying:
-
-```bash
-export TRUCLAW_ADMIN_KEY_HASH=$(echo -n "your-secret-key" | sha256sum | awk '{print $1}')
-./deploy.sh
-```
-
-### Commands
-
-```bash
-# view recent security ledger events
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-ledger
-
-# view agent memory file
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-memory
-
-# clear security ledger only
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-ledger
-
-# clear memory only
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-memory
-
-# clear both ledger and memory
-TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
-```
-
-### What each command does
-
-**`view-ledger`** — prints the last 20 security events. Each event includes tool name, arguments, danger classification, reason, and whether it was allowed or blocked.
-
-**`view-memory`** — prints the agent's running memory file, used by the danger classifier for cumulative pattern detection.
-
-**`clear-ledger`** — deletes the security ledger from the container and GCS. Use when resetting a session or before a demo.
-
-**`clear-memory`** — deletes the memory file from the container and GCS. Use when the agent's context has become stale.
-
-**`clear-all`** — clears both ledger and memory. Recommended before a demo or after a test session.
-
----
-
 ## State Persistence
 
 On Cloud Run, all state persists to GCS when `TRUCLAW_GCS_BUCKET` is set:
