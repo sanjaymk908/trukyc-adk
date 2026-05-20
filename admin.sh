@@ -88,9 +88,31 @@ IMAGE=$($GCLOUD run services describe $SERVICE_NAME \
   --project=$PROJECT_ID \
   --format='value(spec.template.spec.containers[0].image)')
 
+# get TRUCLAW_ADMIN_KEY_HASH from the service so job can validate
+echo "Getting admin key hash from service..."
+TRUCLAW_ADMIN_KEY_HASH=$($GCLOUD run services describe $SERVICE_NAME \
+  --region $REGION \
+  --project=$PROJECT_ID \
+  --account=$GCLOUD_ACCOUNT \
+  --format='json' \
+  | /usr/bin/python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+envs=data['spec']['template']['spec']['containers'][0]['env']
+for e in envs:
+    if e['name']=='TRUCLAW_ADMIN_KEY_HASH':
+        print(e['value'])
+        break
+")
+
+if [ -z "$TRUCLAW_ADMIN_KEY_HASH" ]; then
+  echo "ERROR: TRUCLAW_ADMIN_KEY_HASH not set on service. Run: ./admin.sh setup-key"
+  exit 1
+fi
+
 echo "Running admin command: $COMMAND"
 
-ENV_VARS="TRUCLAW_ADMIN_KEY=$TRUCLAW_ADMIN_KEY,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET"
+ENV_VARS="TRUCLAW_ADMIN_KEY=$TRUCLAW_ADMIN_KEY,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,TRUCLAW_ADMIN_KEY_HASH=$TRUCLAW_ADMIN_KEY_HASH"
 
 # delete old job to avoid conflicts then recreate
 $GCLOUD run jobs delete $JOB_NAME \
@@ -115,4 +137,5 @@ $GCLOUD logging read \
   --project=$PROJECT_ID \
   --limit=20 \
   --format="value(textPayload)" \
-  --freshness=5m
+  --freshness=5m \
+  --account=$GCLOUD_ACCOUNT
