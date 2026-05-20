@@ -320,6 +320,78 @@ If approval is denied, expired, or invalid:
 
 ---
 
+## Admin CLI
+
+The admin CLI manages the security ledger and memory from the command line. Only users with the admin key can run admin commands. The actual key is never stored — only its SHA256 hash is stored on Cloud Run.
+
+### One-time setup
+
+```bash
+chmod +x admin.sh
+```
+
+Choose your admin key and store its hash on Cloud Run:
+
+```bash
+export TRUCLAW_ADMIN_KEY="your-secret-key"
+./admin.sh setup-key
+```
+
+This generates a SHA256 hash of your key and stores it on Cloud Run. The actual key is never stored anywhere — only the hash. Keep your key safe — it cannot be recovered from the hash.
+
+To persist the hash across future redeploys, generate it and export before deploying:
+
+```bash
+export TRUCLAW_ADMIN_KEY_HASH=$(echo -n "your-secret-key" | sha256sum | awk '{print $1}')
+./deploy.sh
+```
+
+### Commands
+
+```bash
+# view recent security ledger events
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-ledger
+
+# view agent memory file
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-memory
+
+# clear security ledger only
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-ledger
+
+# clear memory only
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-memory
+
+# clear both ledger and memory
+TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
+```
+
+### What each command does
+
+**`setup-key`** — generates a SHA256 hash of your `TRUCLAW_ADMIN_KEY` and stores it on Cloud Run. Run once after first deploy, and again after any deploy that wipes env vars. Requires GCP project admin access.
+
+**`view-ledger`** — prints the last 20 security events from GCS. Each event includes tool name, arguments, danger classification, reason, and whether it was allowed or blocked.
+
+**`view-memory`** — prints the agent's running memory file from GCS, used by the danger classifier for cumulative pattern detection.
+
+**`clear-ledger`** — deletes the security ledger from the container and GCS. The classifier loses cumulative pattern history. Use when resetting a session or before a demo.
+
+**`clear-memory`** — deletes the memory file from the container and GCS. Use when the agent's context has become stale.
+
+**`clear-all`** — clears both ledger and memory in one command. Recommended before a demo or after a test session.
+
+### How authentication works
+
+1. Admin runs `TRUCLAW_ADMIN_KEY=your-key ./admin.sh <command>`
+2. `admin.sh` reads `TRUCLAW_ADMIN_KEY_HASH` from the Cloud Run service
+3. Passes both to a Cloud Run Job running inside the container
+4. `admin_cli.py` hashes the provided key and compares to the stored hash
+5. Match → command runs. No match → rejected with error.
+
+Nobody with only GCS or Cloud Run console access can run admin commands without knowing the original key.
+```
+
+---
+
 ## License
 
 MIT
