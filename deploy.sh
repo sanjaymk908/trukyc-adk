@@ -5,8 +5,8 @@
 # Deploys the TruClaw ADK agent to Google Cloud Run.
 #
 # REQUIRED env vars (set before running):
-#   GOOGLE_API_KEY              Google AI Studio API key
-#   ANTHROPIC_API_KEY_TRUKYC    Anthropic API key for TruClaw classifier
+#   GOOGLE_API_KEY              Google AI Studio API key (used for agents AND
+#                               TruClaw safety classifier via Gemini 3.5 Flash)
 #
 # OPTIONAL env vars:
 #   SIMUL8OR_API_KEY            Simul8or API key (only needed for trading agent)
@@ -15,11 +15,13 @@
 #                               Default: https://trukyc-relay.trusources.workers.dev
 #   TRUCLAW_GCS_BUCKET          GCS bucket for TruClaw state persistence
 #                               Default: truclaw-state-truclaw-chat-prod
-#   TRUCLAW_ADMIN_KEY           Admin key for admin CLI (never stored — used to
-#                               generate TRUCLAW_ADMIN_KEY_HASH only)
-#   TRUCLAW_ADMIN_KEY_HASH      SHA256 hash of TRUCLAW_ADMIN_KEY (optional)
-#                               If not set, run after deploy:
+#   TRUCLAW_CLASSIFIER_MODEL    Gemini model for safety classification
+#                               Default: gemini-3.5-flash
+#   TRUCLAW_ADMIN_KEY_HASH      SHA256 hash of admin key for admin CLI (optional)
+#                               If not set here, run after deploy:
 #                                 ./admin.sh setup-key   (optional, admin use only)
+#                               To generate hash:
+#                                 echo -n "your-key" | sha256sum | awk '{print $1}'
 #
 # USAGE:
 #   ./deploy.sh
@@ -36,7 +38,6 @@ SERVICE_NAME="my-adk-agent"         # Cloud Run service name
 
 # ── required API keys ─────────────────────────────────────────────────────────
 GOOGLE_API_KEY="${GOOGLE_API_KEY:-your-google-api-key}"
-ANTHROPIC_API_KEY_TRUKYC="${ANTHROPIC_API_KEY_TRUKYC:-your-anthropic-api-key}"
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── optional API keys ─────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ PE_API_KEY="${PE_API_KEY:-your-pe-api-key}"
 # ── optional config ───────────────────────────────────────────────────────────
 TRUKYC_RELAY_URL="${TRUKYC_RELAY_URL:-https://trukyc-relay.trusources.workers.dev}"
 TRUCLAW_GCS_BUCKET="${TRUCLAW_GCS_BUCKET:-truclaw-state-truclaw-chat-prod}"
+TRUCLAW_CLASSIFIER_MODEL="${TRUCLAW_CLASSIFIER_MODEL:-gemini-3.5-flash}"
 
 # OPTIONAL: SHA256 hash of your TRUCLAW_ADMIN_KEY for admin CLI access
 # Never store the actual key here — only the hash
@@ -82,7 +84,7 @@ gcloud run deploy $SERVICE_NAME \
   --timeout=3600 \
   --min-instances=1 \
   --no-cpu-throttling \
-  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,ANTHROPIC_API_KEY_TRUKYC=$ANTHROPIC_API_KEY_TRUKYC,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,PE_API_KEY=$PE_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,ADK_APP_NAME=orchestrator,ADK_BASE_URL=http://localhost:8080,TRUCLAW_ADMIN_KEY_HASH=$TRUCLAW_ADMIN_KEY_HASH"
+  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,SIMUL8OR_API_KEY=$SIMUL8OR_API_KEY,PE_API_KEY=$PE_API_KEY,TRUKYC_RELAY_URL=$TRUKYC_RELAY_URL,TRUCLAW_GCS_BUCKET=$TRUCLAW_GCS_BUCKET,ADK_APP_NAME=orchestrator,ADK_BASE_URL=http://localhost:8080,TRUCLAW_ADMIN_KEY_HASH=$TRUCLAW_ADMIN_KEY_HASH,TRUCLAW_CLASSIFIER_MODEL=$TRUCLAW_CLASSIFIER_MODEL"
 
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
   --region $REGION \
