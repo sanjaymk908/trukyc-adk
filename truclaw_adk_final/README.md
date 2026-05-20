@@ -270,7 +270,9 @@ If approval is denied, expired, or invalid:
 
 ## Admin CLI
 
-The admin CLI manages the security ledger and memory from the command line. Only users with the admin key can run admin commands. The actual key is never stored — only its SHA256 hash is stored on Cloud Run.
+The admin CLI manages the security ledger and memory from the command line. Admin commands require `TRUCLAW_ADMIN_KEY`.
+
+The raw admin key is never stored. Cloud Run stores only `TRUCLAW_ADMIN_KEY_HASH`, a SHA256 hash of the key.
 
 ### One-time setup
 
@@ -278,65 +280,53 @@ The admin CLI manages the security ledger and memory from the command line. Only
 chmod +x admin.sh
 ```
 
-Choose your admin key and store its hash on Cloud Run:
+Choose an admin key:
 
 ```bash
 export TRUCLAW_ADMIN_KEY="your-secret-key"
 ./admin.sh setup-key
 ```
 
-This generates a SHA256 hash of your key and stores it on Cloud Run. The actual key is never stored anywhere — only the hash. Keep your key safe — it cannot be recovered from the hash.
+This stores only the SHA256 hash on Cloud Run. Keep the original key safe; it cannot be recovered from the hash.
 
-To persist the hash across future redeploys, generate it and export before deploying:
+To persist the hash across future redeploys:
 
 ```bash
-export TRUCLAW_ADMIN_KEY_HASH=$(echo -n "your-secret-key" | sha256sum | awk '{print $1}')
+export TRUCLAW_ADMIN_KEY_HASH="$(printf '%s' 'your-secret-key' | shasum -a 256 | cut -d ' ' -f 1)"
 ./deploy.sh
 ```
 
 ### Commands
 
 ```bash
-# view recent security ledger events
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-ledger
-
-# view agent memory file
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-memory
-
-# clear security ledger only
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-ledger
-
-# clear memory only
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-memory
-
-# clear both ledger and memory
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
 ```
 
 ### What each command does
 
-**`setup-key`** — generates a SHA256 hash of your `TRUCLAW_ADMIN_KEY` and stores it on Cloud Run. Run once after first deploy, and again after any deploy that wipes env vars. Requires GCP project admin access.
-
-**`view-ledger`** — prints the last 20 security events from GCS. Each event includes tool name, arguments, danger classification, reason, and whether it was allowed or blocked.
-
-**`view-memory`** — prints the agent's running memory file from GCS, used by the danger classifier for cumulative pattern detection.
-
-**`clear-ledger`** — deletes the security ledger from the container and GCS. The classifier loses cumulative pattern history. Use when resetting a session or before a demo.
-
-**`clear-memory`** — deletes the memory file from the container and GCS. Use when the agent's context has become stale.
-
-**`clear-all`** — clears both ledger and memory in one command. Recommended before a demo or after a test session.
+| Command | Description |
+|---|---|
+| `setup-key` | Hashes `TRUCLAW_ADMIN_KEY` and stores the hash on Cloud Run. |
+| `view-ledger` | Prints recent security events from GCS. |
+| `view-memory` | Prints the classifier memory file from GCS. |
+| `clear-ledger` | Deletes the security ledger locally and from GCS. |
+| `clear-memory` | Deletes the classifier memory file locally and from GCS. |
+| `clear-all` | Clears both ledger and memory. Useful before demos. |
 
 ### How authentication works
 
-1. Admin runs `TRUCLAW_ADMIN_KEY=your-key ./admin.sh <command>`
-2. `admin.sh` reads `TRUCLAW_ADMIN_KEY_HASH` from the Cloud Run service
-3. Passes both to a Cloud Run Job running inside the container
-4. `admin_cli.py` hashes the provided key and compares to the stored hash
-5. Match → command runs. No match → rejected with error.
+1. Admin runs `TRUCLAW_ADMIN_KEY=your-key ./admin.sh COMMAND`.
+2. `admin.sh` reads `TRUCLAW_ADMIN_KEY_HASH` from Cloud Run.
+3. A Cloud Run Job runs inside the container.
+4. `admin_cli.py` hashes the provided key and compares it to the stored hash.
+5. Match → command runs. No match → rejected.
 
-Nobody with only GCS or Cloud Run console access can run admin commands without knowing the original key.
-
+Someone with only GCS or Cloud Run console access cannot run admin commands without the original key.
+ 
 ---
 
 ## License
