@@ -18,10 +18,11 @@ Safe tools pass through instantly. Dangerous tools (trades, deletes, emails, she
 
 ```bash
 pip install -e .
-export TRUKYC_RELAY_URL="https://trukyc-relay.trusources.workers.dev"
+export TRUKYC_RELAY_URL="[https://trukyc-relay.trusources.workers.dev](https://trukyc-relay.trusources.workers.dev)"
 export GOOGLE_API_KEY="your-google-api-key"
 truclaw install
 adk web
+
 ```
 
 `truclaw install` writes a `.pth` file into the current Python environment so vanilla `adk web` imports `truclaw_adk.autopatch` at interpreter startup. The autopatch wraps every `google.adk.agents.LlmAgent` and installs TruClaw's `before_tool_callback` on all agents.
@@ -32,16 +33,17 @@ adk web
 
 ### Prerequisites
 
-- [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed
-- GCP project with billing enabled
-- Google API key from [Google AI Studio](https://aistudio.google.com/apikey)
-- TruClaw iOS app: [App Store](https://apps.apple.com/us/app/truclaw/id6749509039)
+* [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed
+* GCP project with billing enabled
+* Google API key from [Google AI Studio](https://aistudio.google.com/apikey)
+* TruClaw iOS app: [App Store](https://apps.apple.com/us/app/truclaw/id6749509039)
 
 ### 1. Authenticate
 
 ```bash
 gcloud auth login your@email.com
 gcloud config set project YOUR_PROJECT_ID
+
 ```
 
 ### 2. Set API keys
@@ -50,8 +52,9 @@ Edit `deploy.sh` and fill in your values, or export as env vars before running:
 
 ```bash
 export GOOGLE_API_KEY="your-google-api-key"
-export SIMUL8OR_API_KEY="your-simul8or-api-key"   # optional — trading agent only
-export PE_API_KEY="your-porteden-api-key"           # optional — email agent only
+export SIMUL8OR_API_KEY="your-simul8or-api-key"
+export PE_API_KEY="your-porteden-api-key"
+
 ```
 
 ### 3. Deploy
@@ -59,15 +62,17 @@ export PE_API_KEY="your-porteden-api-key"           # optional — email agent o
 ```bash
 chmod +x deploy.sh
 ./deploy.sh
+
 ```
 
 On completion you will see:
 
 ```text
-Deployed: https://my-adk-agent-xxxx-uc.a.run.app
-Dev UI:   https://my-adk-agent-xxxx-uc.a.run.app/dev-ui/
-Pair:     https://my-adk-agent-xxxx-uc.a.run.app/pair
-Chat:     https://my-adk-agent-xxxx-uc.a.run.app/chat
+Deployed: [https://my-adk-agent-xxxx-uc.a.run.app](https://my-adk-agent-xxxx-uc.a.run.app)
+Dev UI:   [https://my-adk-agent-xxxx-uc.a.run.app/dev-ui/](https://my-adk-agent-xxxx-uc.a.run.app/dev-ui/)
+Pair:     [https://my-adk-agent-xxxx-uc.a.run.app/pair](https://my-adk-agent-xxxx-uc.a.run.app/pair)
+Chat:     [https://my-adk-agent-xxxx-uc.a.run.app/chat](https://my-adk-agent-xxxx-uc.a.run.app/chat)
+
 ```
 
 ### 4. Connect Google Chat (optional)
@@ -80,6 +85,7 @@ Send this message to the agent via Google Chat or Dev UI:
 
 ```text
 pair my TruClaw device
+
 ```
 
 Open the pairing link on your iPhone. The TruClaw app completes pairing automatically. Pairing persists to GCS and survives container restarts.
@@ -89,7 +95,7 @@ Open the pairing link on your iPhone. The TruClaw app completes pairing automati
 ## Environment Variables
 
 | Variable | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GOOGLE_API_KEY` | Yes | Google AI Studio key for agents and Gemini safety classifier |
 | `TRUKYC_RELAY_URL` | Yes | TruClaw relay endpoint |
 | `TRUCLAW_GCS_BUCKET` | No | GCS bucket for persistent state (default: truclaw-state-truclaw-chat-prod) |
@@ -107,7 +113,7 @@ Open the pairing link on your iPhone. The TruClaw app completes pairing automati
 On Cloud Run, all state persists to GCS when `TRUCLAW_GCS_BUCKET` is set.
 
 | File | GCS path | Description |
-|---|---|---|
+| --- | --- | --- |
 | Paired devices | truclaw/paired.json | Device pairing, survives restarts |
 | Security ledger | truclaw/security-ledger.jsonl | Audit trail of all tool calls |
 | Agent memory | truclaw/memory.md | Running summary for classifier context |
@@ -124,6 +130,7 @@ Make the script executable:
 
 ```bash
 chmod +x admin.sh
+
 ```
 
 Choose an admin key and store its hash on Cloud Run:
@@ -131,6 +138,7 @@ Choose an admin key and store its hash on Cloud Run:
 ```bash
 export TRUCLAW_ADMIN_KEY="your-secret-key"
 ./admin.sh setup-key
+
 ```
 
 This stores only the SHA256 hash on Cloud Run. Keep the original key safe — it cannot be recovered from the hash.
@@ -140,6 +148,7 @@ To persist the hash across future redeploys, generate it and export before runni
 ```bash
 export TRUCLAW_ADMIN_KEY_HASH=$(echo -n "your-secret-key" | sha256sum | awk '{print $1}')
 ./deploy.sh
+
 ```
 
 ### Commands
@@ -150,12 +159,13 @@ TRUCLAW_ADMIN_KEY=your-key ./admin.sh view-memory
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-ledger
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-memory
 TRUCLAW_ADMIN_KEY=your-key ./admin.sh clear-all
+
 ```
 
 ### What each command does
 
 | Command | Description |
-|---|---|
+| --- | --- |
 | `setup-key` | Hashes TRUCLAW_ADMIN_KEY and stores the hash on Cloud Run. Run once after first deploy. |
 | `view-ledger` | Prints recent security events from GCS. Includes tool name, args, danger classification, and outcome. |
 | `view-memory` | Prints the classifier memory file from GCS, used for cumulative pattern detection. |
@@ -176,6 +186,7 @@ truclaw install    # install autopatch into current Python environment
 truclaw doctor     # check environment and configuration
 truclaw status     # show paired devices
 truclaw pair       # pair a new iPhone via terminal
+
 ```
 
 ---
@@ -188,6 +199,7 @@ Default state is project-local:
 ./.truclaw/security-ledger.jsonl
 ./.truclaw/memory.md
 ./.truclaw/devices/paired.json
+
 ```
 
 Pairing shape is OpenClaw-compatible:
@@ -203,12 +215,14 @@ Pairing shape is OpenClaw-compatible:
     "pairedAt": "2026-04-22T01:54:38.741Z"
   }
 }
+
 ```
 
 Override state root:
 
 ```bash
 export TRUCLAW_STATE_DIR="./.truclaw"
+
 ```
 
 ---
@@ -222,6 +236,7 @@ gcloud beta run services logs tail my-adk-agent \
   --region us-central1 \
   --project=YOUR_PROJECT_ID \
   --account=your@email.com
+
 ```
 
 Key checkpoints to watch:
@@ -237,6 +252,7 @@ Key checkpoints to watch:
 [guardrail] approved; allowing tool=...
 [ledger] appended id=... tool=... allowed=True dangerous=True
 [gcs] uploaded truclaw/security-ledger.jsonl
+
 ```
 
 ---
@@ -250,6 +266,7 @@ pip install -e .
 truclaw install
 truclaw doctor
 adk web
+
 ```
 
 ### 2. Pair your iPhone
@@ -258,12 +275,14 @@ Install the TruClaw iOS app from the [App Store](https://apps.apple.com/us/app/t
 
 ```bash
 truclaw pair
+
 ```
 
 Or send this in the ADK UI:
 
 ```text
 pair my TruClaw device
+
 ```
 
 ### 3. Confirm pairing
@@ -271,18 +290,21 @@ pair my TruClaw device
 ```bash
 truclaw status
 cat ./.truclaw/devices/paired.json
+
 ```
 
 ### 4. Test safe action (no approval required)
 
 ```text
 show my positions
+
 ```
 
 ### 5. Test dangerous action (biometric approval required)
 
 ```text
 buy NVDA at 100
+
 ```
 
 Expected logs:
@@ -293,6 +315,7 @@ Expected logs:
 [OPENCLAW] TruClaw [challenge] sending push ...
 [OPENCLAW] TruClaw [challenge] approved ...
 [OPENCLAW] TruClaw [guardrail] approved; allowing tool=...
+
 ```
 
 If approval is denied, expired, or invalid, the tool is blocked and ADK receives:
@@ -300,6 +323,7 @@ If approval is denied, expired, or invalid, the tool is blocked and ADK receives
 ```text
 status: blocked
 blocked_by: TruClaw
+
 ```
 
 ---
@@ -307,3 +331,4 @@ blocked_by: TruClaw
 ## License
 
 MIT
+
