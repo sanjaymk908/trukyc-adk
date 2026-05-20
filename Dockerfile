@@ -31,7 +31,7 @@ RUN curl -fsSL https://github.com/porteden/cli/releases/download/v0.2.1/porteden
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 RUN pip install git+https://github.com/sanjaymk908/trukyc-adk.git@main#subdirectory=truclaw_adk_final
-RUN python3 -m playwright install --with-deps chromium
+RUN python3 -m playwright install chromium
 
 COPY . .
 RUN truclaw install && python3 -c "import truclaw_adk.autopatch; print('autopatch OK')"
