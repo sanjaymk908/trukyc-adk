@@ -37,6 +37,7 @@ def _sync_poll(challenge_session_id: str, pending: Dict[str, Any]) -> Dict[str, 
     subject to event-loop congestion (which caused 10-15s delays in practice).
     """
     poll_url = f"{config.RELAY_URL}/poll/{challenge_session_id}"
+    t_poll_start = time.time()
     log(f"[challenge] thread-poll start challengeSessionId={challenge_session_id} url={poll_url}")
 
     with httpx.Client(timeout=5.0) as client:
@@ -45,6 +46,7 @@ def _sync_poll(challenge_session_id: str, pending: Dict[str, Any]) -> Dict[str, 
                 resp = client.get(poll_url)
 
                 if resp.status_code == 200:
+                    log(f"[challenge] poll 200 after {time.time() - t_poll_start:.2f}s challengeSessionId={challenge_session_id}")
                     data = resp.json()
                     jwt = data.get("jwt")
                     if not jwt:
@@ -167,6 +169,7 @@ async def _send_and_poll(
 
     log(f"[challenge] sending challengeSessionId={challenge_session_id} tool={tool_name} action={action}")
 
+    t_post_start = time.time()
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
@@ -174,8 +177,9 @@ async def _send_and_poll(
                 headers={"Content-Type": "application/json"},
                 json=payload,
             )
+        t_post_elapsed = time.time() - t_post_start
         text = resp.text[:500]
-        log(f"[challenge] relay response status={resp.status_code} body={text}")
+        log(f"[challenge] relay POST complete elapsed={t_post_elapsed:.2f}s status={resp.status_code} body={text}")
         if resp.status_code >= 400:
             PENDING.pop(challenge_session_id, None)
             return {
