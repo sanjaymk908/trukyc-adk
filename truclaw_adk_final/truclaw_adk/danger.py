@@ -143,6 +143,7 @@ async def _gemini_generate(system: str, user: str, max_tokens: int = 300) -> str
         config=genai_types.GenerateContentConfig(
             system_instruction=system,
             max_output_tokens=max_tokens,
+            thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
         ),
     )
     return response.text.strip()
