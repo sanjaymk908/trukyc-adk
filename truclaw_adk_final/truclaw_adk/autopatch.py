@@ -79,10 +79,50 @@ def _patch_mcp_stdio_timeout() -> None:
         log(f"[autopatch] could not patch MCP stdio timeout: {e}")
 
 
+def _register_on_app(app) -> None:
+    """Register Truclaw routes on a FastAPI app instance."""
+    if not getattr(app.state, "_truclaw_pair_route_registered", False):
+        from .pair_route import register_pair_route
+        register_pair_route(app)
+        app.state._truclaw_pair_route_registered = True
+        log("[autopatch] /pair route registered")
+    if not getattr(app.state, "_truclaw_chat_registered", False):
+        try:
+            from .chat_handler import register_chat_handler
+            register_chat_handler(app)
+            app.state._truclaw_chat_registered = True
+            log("[autopatch] /chat route registered")
+        except Exception as e:
+            log(f"[autopatch] /chat route skipped: {e}")
+
+
+def _find_running_fastapi_app():
+    """Find an already-created FastAPI app via the garbage collector."""
+    try:
+        import gc
+        from fastapi import FastAPI
+        candidates = [obj for obj in gc.get_objects() if type(obj) is FastAPI]
+        if candidates:
+            # Prefer the app with the most routes (the main server app)
+            return max(candidates, key=lambda a: len(a.routes))
+    except Exception as e:
+        log(f"[autopatch] gc app search failed: {e}")
+    return None
+
+
 def _try_register_pair_route() -> None:
     try:
         from google.adk.cli.adk_web_server import AdkWebServer
 
+        # --- Try to register on an already-running app first ---
+        existing_app = _find_running_fastapi_app()
+        if existing_app is not None:
+            log("[autopatch] found existing FastAPI app via gc — registering routes immediately")
+            _register_on_app(existing_app)
+        else:
+            log("[autopatch] no existing FastAPI app found via gc")
+
+        # --- Also patch get_fast_api_app for future calls ---
         original = AdkWebServer.get_fast_api_app
 
         if getattr(original, "_truclaw_pair_route_patched", False):
@@ -91,16 +131,7 @@ def _try_register_pair_route() -> None:
 
         def _patched_get_fast_api_app(self, *args, **kwargs):
             app = original(self, *args, **kwargs)
-            if not getattr(app.state, "_truclaw_pair_route_registered", False):
-                from .pair_route import register_pair_route
-                register_pair_route(app)
-                app.state._truclaw_pair_route_registered = True
-                log("[autopatch] /pair route registered")
-            if not getattr(app.state, "_truclaw_chat_registered", False):
-                from .chat_handler import register_chat_handler
-                register_chat_handler(app)
-                app.state._truclaw_chat_registered = True
-                log("[autopatch] /chat route registered")
+            _register_on_app(app)
             return app
 
         _patched_get_fast_api_app._truclaw_pair_route_patched = True
