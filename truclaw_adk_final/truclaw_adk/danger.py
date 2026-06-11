@@ -136,7 +136,7 @@ async def _gemini_generate(system: str, user: str, max_tokens: int = 300) -> str
     from google import genai
     from google.genai import types as genai_types
 
-    client = genai.Client(api_key=config.GOOGLE_API_KEY)
+    client = genai.Client(api_key=config.GOOGLE_API_KEY, vertexai=False)
     response = await client.aio.models.generate_content(
         model=config.GEMINI_CLASSIFIER_MODEL,
         contents=user,
