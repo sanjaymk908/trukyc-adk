@@ -1,5 +1,4 @@
 from typing import Any, Dict
-import inspect
 from .danger import check_danger
 from .challenge import send_challenge
 from .ledger import append_event, prior_summary
@@ -32,6 +31,34 @@ def _user_id(tool_context: Any) -> str:
     return "default"
 
 
+def _root_agent_id(tool_context: Any) -> str:
+    """
+    Derive agentId from the root agent's name in the invocation context.
+    Falls back to the immediate agent name, then 'unknown'.
+    """
+    for attr in ("_invocation_context", "invocation_context"):
+        v = getattr(tool_context, attr, None)
+        if v is None:
+            continue
+        # ADK stores the root agent on the invocation context
+        root = getattr(v, "root_agent", None) or getattr(v, "agent", None)
+        if root is not None:
+            name = getattr(root, "name", None)
+            if name:
+                return name
+    return _agent_name(tool_context)
+
+
+def _ensure_policy_and_usage_loaded(agent_id: str) -> None:
+    """
+    Warm up policy and usage caches for this agent on first call.
+    Both loads are no-ops if already cached.
+    """
+    from .policy import load_policy, load_usage_summary
+    load_policy(agent_id)
+    load_usage_summary(agent_id)
+
+
 async def truclaw_before_tool_callback(
     tool: Any = None,
     args: Any = None,
@@ -44,18 +71,22 @@ async def truclaw_before_tool_callback(
 
     tool_name = _tool_name(tool)
     agent_name = _agent_name(tool_context)
+    agent_id = _root_agent_id(tool_context)
     user_id = _user_id(tool_context)
 
-    log(f"[guardrail] pre-tool agent={agent_name} tool={tool_name} userId={user_id}")
+    log(f"[guardrail] pre-tool agent={agent_name} agentId={agent_id} tool={tool_name} userId={user_id}")
 
-    decision = await check_danger(tool_name, args)
+    # Ensure policy and usage summary are loaded (cached after first call)
+    _ensure_policy_and_usage_loaded(agent_id)
+
+    decision = await check_danger(tool_name, args, agent_id=agent_id, user_id=user_id)
 
     base_event = {
         "agentName": agent_name,
+        "agentId": agent_id,
         "toolName": tool_name,
         "toolArgs": args,
         "userId": user_id,
-        "priorSummary": prior_summary(),
         "dangerous": decision.get("dangerous"),
         "reason": decision.get("reason"),
         "action": decision.get("action"),
@@ -64,6 +95,7 @@ async def truclaw_before_tool_callback(
         "scriptSha256": decision.get("scriptSha256"),
         "scriptContentExcerpt": decision.get("scriptContent"),
         "safeBypass": decision.get("safeBypass", False),
+        "thresholdViolation": decision.get("thresholdViolation", False),
     }
 
     if not decision.get("dangerous"):

@@ -9,54 +9,6 @@ from .ledger import prior_summary, dangerous_prior_flag
 from .logging import log
 
 
-SAFE_TOOLS = {
-    "read",
-    "session_status",
-    "list",
-    "ls",
-    "web_search",
-    "web_fetch",
-    "browser_snapshot",
-    "status",
-    "truclaw_pair",
-    "truclaw_status",
-    "transfer_to_agent",
-    "transfer_to_agent_tool",
-    "agent_transfer",
-    "load_artifacts",
-    "list_artifacts",
-    "save_artifacts",
-}
-
-SCRIPT_EXECUTION_PATTERN = re.compile(
-    r"^(python3?|bash|sh|node|ruby|perl|php|pwsh|powershell)\s+\S"
-)
-
-SCRIPT_PATH_PATTERN = re.compile(
-    r"^(?:python3?|bash|sh|node|ruby|perl|php|pwsh|powershell)\s+"
-    r"([\w./~-]+\.(?:py|sh|js|ts|rb|pl|php|ps1))"
-)
-
-FINANCIAL_FUNCTION_PATTERN = re.compile(
-    r"\b("
-    r"place_order|submit_order|execute_trade|cancel_order|sell_order|buy_order|"
-    r"transfer|send_payment|wire_transfer|withdraw|deposit|execute_transaction|"
-    r"approve_claim|modify_policy"
-    r")\s*\(",
-    re.I,
-)
-
-ALWAYS_DANGEROUS_TOOLS = {
-    "place_trade",
-    "execute_trade",
-    "send_email",
-    "send_email_via_porteden",
-    "delete_email",
-    "forward_email",
-    "reply_email",
-}
-
-
 def command_from_args(tool_args: Any) -> str:
     if isinstance(tool_args, dict):
         return str(
@@ -65,6 +17,12 @@ def command_from_args(tool_args: Any) -> str:
             or json.dumps(tool_args, default=str)
         )
     return str(tool_args)
+
+
+SCRIPT_PATH_PATTERN = re.compile(
+    r"^(?:python3?|bash|sh|node|ruby|perl|php|pwsh|powershell)\s+"
+    r"([\w./~-]+\.(?:py|sh|js|ts|rb|pl|php|ps1))"
+)
 
 
 def resolve_script_content(command: str) -> Dict[str, Any]:
@@ -132,7 +90,6 @@ def normalize_classifier_decision(decision: Dict[str, Any], tool_name: str) -> D
 
 
 async def _gemini_generate(system: str, user: str, max_tokens: int = 300) -> str:
-    """Call Gemini API for classification."""
     from google import genai
     from google.genai import types as genai_types
 
@@ -175,12 +132,26 @@ async def get_action_description(
         return f"Execute: {tool_name}"
 
 
-async def check_danger(tool_name: str, tool_args: Any) -> Dict[str, Any]:
-    log(f"[guardrail] danger check tool={tool_name}")
+async def check_danger(
+    tool_name: str,
+    tool_args: Any,
+    agent_id: str = "unknown",
+    user_id: str = "default",
+) -> Dict[str, Any]:
+    log(f"[guardrail] danger check tool={tool_name} agentId={agent_id} userId={user_id}")
+
+    from .policy import load_policy, load_usage_summary, check_threshold
+
+    policy = load_policy(agent_id)
+    load_usage_summary(agent_id)  # ensure usage cache is warm
 
     normalized = tool_name.split(".")[-1]
 
-    if normalized in SAFE_TOOLS or tool_name in SAFE_TOOLS:
+    # ------------------------------------------------------------------ #
+    # Path 1: safeTools bypass — no classifier call, no ledger write
+    # ------------------------------------------------------------------ #
+    safe_set = set(policy.get("safeTools", []))
+    if normalized in safe_set or tool_name in safe_set:
         log(f"[guardrail] safe-tool bypass tool={tool_name}")
         return {
             "dangerous": False,
@@ -189,38 +160,61 @@ async def check_danger(tool_name: str, tool_args: Any) -> Dict[str, Any]:
             "safeBypass": True,
         }
 
+    # ------------------------------------------------------------------ #
+    # Path 2: toolThresholds check — catches cumulative abuse before
+    #         going to the classifier.  A violation is treated the same
+    #         as alwaysDangerous (requires approval).
+    # ------------------------------------------------------------------ #
+    threshold_violation = check_threshold(agent_id, user_id, tool_name, tool_args)
+    if threshold_violation:
+        log(f"[guardrail] threshold violation: {threshold_violation}")
+        action = await get_action_description(tool_name, tool_args, None)
+        return {
+            "dangerous": True,
+            "reason": f"threshold exceeded: {threshold_violation}",
+            "action": action,
+            "thresholdViolation": True,
+        }
+
     command = command_from_args(tool_args)
     script = resolve_script_content(command)
 
-    if normalized in ALWAYS_DANGEROUS_TOOLS or tool_name in ALWAYS_DANGEROUS_TOOLS:
+    # ------------------------------------------------------------------ #
+    # Path 3: alwaysDangerousTools — skip classifier, always dangerous
+    # ------------------------------------------------------------------ #
+    dangerous_set = set(policy.get("alwaysDangerousTools", []))
+    if normalized in dangerous_set or tool_name in dangerous_set:
         action = await get_action_description(tool_name, tool_args, script.get("scriptContent"))
         return {"dangerous": True, "reason": "always-dangerous tool", "action": action, **script}
 
-    if SCRIPT_EXECUTION_PATTERN.match(command):
-        action = await get_action_description(tool_name, tool_args, script.get("scriptContent"))
-        return {"dangerous": True, "reason": "script/interpreter execution is always dangerous", "action": action, **script}
-
-    if FINANCIAL_FUNCTION_PATTERN.search(command):
-        action = await get_action_description(tool_name, tool_args, script.get("scriptContent"))
-        return {"dangerous": True, "reason": "financial/business action pattern", "action": action, **script}
-
+    # ------------------------------------------------------------------ #
+    # Path 4: classifier — unclassified tools + anything else
+    #         businessRules from the policy are injected as context.
+    # ------------------------------------------------------------------ #
     if not config.GOOGLE_API_KEY:
         log("[guardrail] GOOGLE_API_KEY missing; fail closed")
         return {"dangerous": True, "reason": "GOOGLE_API_KEY not configured", "action": f"Execute {tool_name}", **script}
 
-    system = """
+    business_rules = policy.get("businessRules", "")
+    business_rules_section = (
+        f"\nBusiness rules for this agent:\n{business_rules}\n"
+        if business_rules
+        else ""
+    )
+
+    system = f"""
 You are a security guardrail for an AI agent. Your job is to decide if a tool call
 should be blocked and require human biometric approval before execution.
 
 Reply with JSON only. No markdown. No prose.
 
 Schema:
-{
+{{
   "dangerous": boolean,
   "reason": "one line",
   "action": "under 90 chars, starts with a verb"
-}
-
+}}
+{business_rules_section}
 Core principle:
 A tool call is dangerous if it causes an irreversible or harmful side effect in the
 real world, or if it is part of a cumulative pattern that would cause such harm.
