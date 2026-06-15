@@ -276,6 +276,9 @@ def _day_key(ts: Optional[float] = None) -> str:
     return d.strftime("%Y-%m-%d")
 
 
+SAFE_BYPASS = "SAFE_BYPASS"
+
+
 def check_threshold(
     agent_id: str,
     user_id: str,
@@ -284,14 +287,17 @@ def check_threshold(
 ) -> Optional[str]:
     """
     Check toolThresholds from the policy.
-    Returns a violation reason string if any limit is exceeded, else None.
+
+    Returns:
+      SAFE_BYPASS          — value is below safeBelow; skip classifier, allow
+      "violation reason"   — limit exceeded; treat as dangerous
+      None                 — no threshold rule for this tool
 
     Checks (in order):
-      1. safeBelow — single-call field value threshold
+      1. safeBelow — single-call field value threshold.
+                     Below → SAFE_BYPASS. At or above → violation.
       2. dailyLimit — from usage_summary
       3. weeklyLimit — from usage_summary
-      4. perSessionLimit — from usage_summary (session counts not yet tracked;
-         reserved for future use)
     """
     policy = _policy_cache.get(agent_id, {})
     thresholds = policy.get("toolThresholds", {})
@@ -300,14 +306,17 @@ def check_threshold(
 
     rule = thresholds[tool_name]
 
-    # 1. safeBelow — check the value in this specific call's args
+    # 1. safeBelow — inspect the named field in this call's args
     field = rule.get("field")
     safe_below = rule.get("safeBelow")
     if field and safe_below is not None:
         val = tool_args.get(field) if isinstance(tool_args, dict) else None
         if val is not None:
             try:
-                if float(val) >= float(safe_below):
+                if float(val) < float(safe_below):
+                    # Below threshold — safe bypass, skip classifier entirely
+                    return SAFE_BYPASS
+                else:
                     return (
                         f"tool={tool_name} field={field} value={val} "
                         f"exceeds safeBelow={safe_below}"

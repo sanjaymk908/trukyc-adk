@@ -161,17 +161,27 @@ async def check_danger(
         }
 
     # ------------------------------------------------------------------ #
-    # Path 2: toolThresholds check — catches cumulative abuse before
-    #         going to the classifier.  A violation is treated the same
-    #         as alwaysDangerous (requires approval).
+    # Path 2: toolThresholds check — two outcomes:
+    #   SAFE_BYPASS  → value is below safeBelow; skip classifier, allow
+    #   violation    → value at/above safeBelow or cumulative limit hit;
+    #                  treat same as alwaysDangerous (requires approval)
     # ------------------------------------------------------------------ #
-    threshold_violation = check_threshold(agent_id, user_id, tool_name, tool_args)
-    if threshold_violation:
-        log(f"[guardrail] threshold violation: {threshold_violation}")
+    from .policy import SAFE_BYPASS
+    threshold_result = check_threshold(agent_id, user_id, tool_name, tool_args)
+    if threshold_result == SAFE_BYPASS:
+        log(f"[guardrail] threshold safe-bypass tool={tool_name}")
+        return {
+            "dangerous": False,
+            "reason": "below threshold — safe bypass",
+            "action": f"Run {tool_name}",
+            "safeBypass": True,
+        }
+    if threshold_result:
+        log(f"[guardrail] threshold violation: {threshold_result}")
         action = await get_action_description(tool_name, tool_args, None)
         return {
             "dangerous": True,
-            "reason": f"threshold exceeded: {threshold_violation}",
+            "reason": f"threshold exceeded: {threshold_result}",
             "action": action,
             "thresholdViolation": True,
         }
