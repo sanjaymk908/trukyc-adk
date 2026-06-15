@@ -313,8 +313,8 @@ def check_threshold(
         val = tool_args.get(field) if isinstance(tool_args, dict) else None
         if val is not None:
             try:
-                if float(val) < float(safe_below):
-                    # Below threshold — safe bypass, skip classifier entirely
+                if float(val) <= float(safe_below):
+                    # At or below threshold — safe bypass, skip classifier entirely
                     return SAFE_BYPASS
                 else:
                     return (
