@@ -10,10 +10,19 @@ LEDGER_PATH = config.STATE_DIR / "security-ledger.jsonl"
 MEMORY_PATH = config.STATE_DIR / "memory.md"
 
 GCS_LEDGER_BLOB = "truclaw/security-ledger.jsonl"
-GCS_MEMORY_BLOB = "truclaw/memory.md"
 
 _ledger_loaded = False
-_memory_loaded = False
+
+# Per-agent memory cache: agent_id -> markdown text (empty string = no memory yet)
+_memory_cache: Dict[str, str] = {}
+
+
+def _gcs_memory_blob(agent_id: str) -> str:
+    return f"truclaw/policies/{agent_id}/memory.md"
+
+
+def _memory_local(agent_id: str) -> Path:
+    return config.STATE_DIR / "policies" / agent_id / "memory.md"
 
 
 def _ensure_ledger_loaded() -> None:
@@ -25,13 +34,23 @@ def _ensure_ledger_loaded() -> None:
     _ledger_loaded = True
 
 
-def _ensure_memory_loaded() -> None:
-    global _memory_loaded
-    if _memory_loaded:
-        return
-    from .gcs_storage import gcs_download
-    gcs_download(MEMORY_PATH, GCS_MEMORY_BLOB)
-    _memory_loaded = True
+def _load_memory(agent_id: str) -> str:
+    """Load cron-generated behavioral memory for this agent. Cached in-process."""
+    if agent_id in _memory_cache:
+        return _memory_cache[agent_id]
+    local = _memory_local(agent_id)
+    if not local.exists():
+        from .gcs_storage import gcs_download
+        gcs_download(local, _gcs_memory_blob(agent_id))
+    if local.exists():
+        try:
+            text = local.read_text(encoding="utf-8")
+            _memory_cache[agent_id] = text
+            return text
+        except Exception:
+            pass
+    _memory_cache[agent_id] = ""
+    return ""
 
 
 def _jsonable(x: Any) -> Any:
@@ -58,7 +77,6 @@ def append_event(event: Dict[str, Any]) -> str:
         f.write(json.dumps(event, sort_keys=True, default=str) + "\n")
     from .gcs_storage import gcs_upload
     gcs_upload(LEDGER_PATH, GCS_LEDGER_BLOB)
-    _append_memory(event)
     log(
         f"[ledger] appended id={event['id']} tool={event.get('toolName')} "
         f"allowed={event.get('allowed')} dangerous={event.get('dangerous')}"
@@ -80,18 +98,33 @@ def read_events(limit: int = 100) -> List[Dict[str, Any]]:
     return out
 
 
-def prior_summary(limit: int = 30) -> str:
+def prior_summary(limit: int = 30, agent_id: str = "") -> str:
+    """
+    Returns classifier context: cross-session behavioral memory (from cron)
+    followed by current-session recent events.
+    """
+    parts: List[str] = []
+
+    # Cross-session memory written by cron aggregator
+    if agent_id:
+        memory = _load_memory(agent_id)
+        if memory:
+            parts.append("=== Cross-session behavioral memory ===")
+            parts.append(memory.strip())
+            parts.append("")
+
+    # Current-session recent events
     events = read_events(limit)
-    if not events:
-        return "No prior actions."
-    lines = []
-    for i, e in enumerate(events, 1):
-        args = json.dumps(e.get("toolArgs"), default=str)[:1200]
-        reason = e.get("reason") or e.get("risk", {}).get("reason") or "n/a"
-        lines.append(
-            f"{i}. {e.get('toolName')}({args}) — {reason} — allowed={e.get('allowed')}"
-        )
-    return "\n".join(lines)
+    if events:
+        parts.append("=== Current session actions ===")
+        for i, e in enumerate(events, 1):
+            args = json.dumps(e.get("toolArgs"), default=str)[:1200]
+            reason = e.get("reason") or e.get("risk", {}).get("reason") or "n/a"
+            parts.append(
+                f"{i}. {e.get('toolName')}({args}) — {reason} — allowed={e.get('allowed')}"
+            )
+
+    return "\n".join(parts) if parts else "No prior actions."
 
 
 def dangerous_prior_flag(limit: int = 5) -> str:
@@ -107,20 +140,6 @@ def dangerous_prior_flag(limit: int = 5) -> str:
     return "\n\nIMPORTANT — prior dangerous actions:\n" + "\n".join(lines)
 
 
-def _append_memory(e: Dict[str, Any]) -> None:
-    _ensure_memory_loaded()
-    MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    line = (
-        f"- {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(e.get('ts', time.time())))} "
-        f"{e.get('toolName')} dangerous={e.get('dangerous')} "
-        f"allowed={e.get('allowed')} reason={e.get('reason')}\n"
-    )
-    with MEMORY_PATH.open("a", encoding="utf-8") as f:
-        f.write(line)
-    from .gcs_storage import gcs_upload
-    gcs_upload(MEMORY_PATH, GCS_MEMORY_BLOB)
-
-
 def clear_ledger() -> None:
     """Admin: clear local ledger and GCS blob."""
     if LEDGER_PATH.exists():
@@ -132,15 +151,16 @@ def clear_ledger() -> None:
     log("[ledger] ledger cleared")
 
 
-def clear_memory() -> None:
-    """Admin: clear local memory and GCS blob."""
-    if MEMORY_PATH.exists():
+def clear_memory(agent_id: str = "") -> None:
+    """Admin: clear local memory cache. GCS copy is managed by the cron job."""
+    _memory_cache.pop(agent_id, None)
+    if agent_id:
+        local = _memory_local(agent_id)
+        if local.exists():
+            local.unlink()
+    elif MEMORY_PATH.exists():
         MEMORY_PATH.unlink()
-    from .gcs_storage import gcs_delete
-    gcs_delete(GCS_MEMORY_BLOB)
-    global _memory_loaded
-    _memory_loaded = False
-    log("[ledger] memory cleared")
+    log(f"[ledger] memory cache cleared agentId={agent_id or 'all'}")
 
 
 def clear_all() -> None:

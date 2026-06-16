@@ -263,7 +263,7 @@ legitimate action than to allow a harmful action without oversight.
     user = (
         f"Tool: {tool_name}\n"
         f"Args: {json.dumps(tool_args, default=str)}\n"
-        f"Prior actions:\n{prior_summary()}\n"
+        f"Prior actions:\n{prior_summary(agent_id=agent_id)}\n"
         f"{dangerous_prior_flag()}\n"
     )
 

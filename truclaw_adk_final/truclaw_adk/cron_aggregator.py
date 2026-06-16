@@ -131,6 +131,99 @@ def _usage_blob(agent_id: str) -> str:
     return f"truclaw/policies/{agent_id}/usage_summary.json"
 
 
+def _memory_blob(agent_id: str) -> str:
+    return f"truclaw/policies/{agent_id}/memory.md"
+
+
+def _generate_memory_summary(
+    agent_id: str,
+    ledger_text: str,
+    counts: Dict[str, Any],
+) -> str:
+    """
+    Deterministic qualitative behavioral summary for the classifier.
+    No LLM — pure aggregation from ledger + counts.
+    Covers the last 7 days per user.
+    """
+    import datetime as dt
+
+    now = dt.datetime.utcnow()
+    cutoff_ts = (now - dt.timedelta(days=7)).timestamp()
+    day_keys = [(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+
+    # Scan ledger for notable events in the last 7 days
+    notable: Dict[str, List[str]] = defaultdict(list)  # userId -> event strings
+
+    for line in ledger_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event: Dict[str, Any] = json.loads(line)
+        except Exception:
+            continue
+
+        try:
+            ts = float(event.get("ts", 0))
+        except (TypeError, ValueError):
+            continue
+
+        if ts < cutoff_ts:
+            continue
+
+        user_id = event.get("userId") or "unknown"
+        tool = event.get("toolName") or "unknown"
+        allowed = event.get("allowed", True)
+        reason = event.get("reason") or ""
+        threshold_violation = event.get("thresholdViolation", False)
+        dangerous = event.get("dangerous", False)
+        safe_bypass = event.get("safeBypass", False)
+        ts_str = dt.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+
+        if not allowed:
+            notable[user_id].append(f"- {ts_str}: {tool} BLOCKED — {reason}")
+        elif threshold_violation:
+            notable[user_id].append(f"- {ts_str}: {tool} threshold exceeded — {reason}")
+        elif dangerous and not safe_bypass:
+            notable[user_id].append(f"- {ts_str}: {tool} approved after auth — {reason}")
+
+    lines = [
+        f"# TruClaw Behavioral Memory — {agent_id}",
+        f"Generated: {now.strftime('%Y-%m-%dT%H:%M:%SZ')} | Window: last 7 days",
+        "",
+    ]
+
+    if not counts:
+        lines.append("No activity recorded in this period.")
+        return "\n".join(lines)
+
+    for user_id, tools in sorted(counts.items()):
+        lines.append(f"## User: {user_id}")
+
+        tool_lines = []
+        total = 0
+        for tool_name, periods in sorted(tools.items()):
+            week_total = sum(periods.get(d, 0) for d in day_keys)
+            if week_total == 0:
+                continue
+            total += week_total
+            tool_lines.append(f"  - {tool_name}: {week_total} calls")
+
+        lines.append(f"**7-day total:** {total} tool calls")
+        lines.extend(tool_lines)
+
+        user_notable = notable.get(user_id, [])
+        if user_notable:
+            lines.append("**Notable events:**")
+            lines.extend(user_notable[-10:])
+        else:
+            lines.append("**Notable events:** None — normal activity pattern")
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _aggregate_ledger(ledger_text: str) -> Dict[str, Any]:
     """
     Parse JSONL ledger, aggregate per userId → toolName → day/week counts.
@@ -214,7 +307,16 @@ def _aggregate_agent(agent_id: str) -> bool:
     }
 
     content = json.dumps(summary, indent=2, sort_keys=True)
-    return _upload_text(_usage_blob(agent_id), content)
+    ok = _upload_text(_usage_blob(agent_id), content)
+
+    # Write qualitative memory summary (non-fatal if it fails)
+    try:
+        memory_md = _generate_memory_summary(agent_id, ledger_text, counts)
+        _upload_text(_memory_blob(agent_id), memory_md)
+    except Exception as e:
+        _log(f"memory summary generation failed agentId={agent_id}: {e} — skipping")
+
+    return ok
 
 
 # --------------------------------------------------------------------------- #
