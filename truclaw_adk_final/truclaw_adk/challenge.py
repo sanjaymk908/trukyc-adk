@@ -128,7 +128,8 @@ async def poll_for_approval(challenge_session_id: str) -> Dict[str, Any]:
 
 async def _send_and_poll(
     device: Dict[str, Any],
-    action: str,
+    action_title: str,
+    action_body: str,
     reason: str,
     tool_name: str,
     tool_args: Any,
@@ -152,7 +153,9 @@ async def _send_and_poll(
         "salt": salt,
         "sessionId": challenge_session_id,
         "webhookURL": webhook_url,
-        "action": action,
+        "action": action_title,          # legacy field — OpenClaw reads this today
+        "actionTitle": action_title,     # new field — read after OpenClaw migration
+        "actionBody": action_body,
     }
 
     PENDING[challenge_session_id] = {
@@ -163,11 +166,12 @@ async def _send_and_poll(
         "expiresAt": expires_at,
         "toolName": tool_name,
         "toolArgs": tool_args,
-        "action": action,
+        "actionTitle": action_title,
+        "actionBody": action_body,
         "reason": reason,
     }
 
-    log(f"[challenge] sending challengeSessionId={challenge_session_id} tool={tool_name} action={action}")
+    log(f"[challenge] sending challengeSessionId={challenge_session_id} tool={tool_name} actionTitle={action_title}")
 
     t_post_start = time.time()
     try:
@@ -201,7 +205,8 @@ async def _send_and_poll(
 
 
 async def send_challenge(
-    action: str,
+    action_title: str,
+    action_body: str,
     reason: str,
     tool_name: str,
     tool_args: Any,
@@ -225,7 +230,7 @@ async def send_challenge(
     log(f"[challenge] fanning out to {len(devices)} device(s) for userId={user_id}")
 
     tasks = [
-        _send_and_poll(device, action, reason, tool_name, tool_args)
+        _send_and_poll(device, action_title, action_body, reason, tool_name, tool_args)
         for device in devices
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)

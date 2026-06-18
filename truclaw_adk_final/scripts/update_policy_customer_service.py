@@ -55,6 +55,7 @@ def main():
     # 3. Add approve_discount threshold
     thresholds = policy.setdefault("toolThresholds", {})
     thresholds["approve_discount"] = APPROVE_DISCOUNT_THRESHOLD
+    thresholds["sync_ask_for_approval"] = APPROVE_DISCOUNT_THRESHOLD
 
     print(f"Added to safeTools: {added or '(already present)'}")
     print(f"toolThresholds[approve_discount] = {APPROVE_DISCOUNT_THRESHOLD}")

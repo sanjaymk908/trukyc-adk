@@ -80,11 +80,16 @@ def extract_json_object(text: str) -> Dict[str, Any]:
 def normalize_classifier_decision(decision: Dict[str, Any], tool_name: str) -> Dict[str, Any]:
     dangerous = bool(decision.get("dangerous"))
     reason = str(decision.get("reason") or decision.get("rationale") or "classified")
-    action = str(decision.get("action") or decision.get("actionDescription") or f"Execute {tool_name}")
+    # Support both new actionTitle/actionBody and legacy action field
+    action_title = str(
+        decision.get("actionTitle") or decision.get("action") or decision.get("actionDescription") or f"Approve: {tool_name}"
+    )[:64]
+    action_body = str(decision.get("actionBody") or "")[:178]
     return {
         "dangerous": dangerous,
         "reason": reason,
-        "action": action,
+        "actionTitle": action_title,
+        "actionBody": action_body,
         "classifierRaw": decision,
     }
 
@@ -110,9 +115,10 @@ async def get_action_description(
     tool_name: str,
     tool_args: Any,
     script_content: Optional[str],
-) -> str:
+) -> Dict[str, str]:
+    """Return {"title": str ≤64 chars, "body": str ≤178 chars} for APNS push."""
     if not config.GOOGLE_API_KEY:
-        return f"Execute: {tool_name}"
+        return {"title": f"Approve: {tool_name}", "body": ""}
 
     prompt = (
         f"Script content:\n```\n{script_content}\n```"
@@ -121,15 +127,19 @@ async def get_action_description(
     )
     prompt += dangerous_prior_flag()
     prompt += (
-        "\n\nWrite one sentence under 90 chars describing what this action DOES. "
-        "Start with a verb."
+        "\n\nRespond with JSON only, no prose:\n"
+        '{"title": "<verb phrase ≤64 chars, e.g. Create P0 ticket>", '
+        '"body": "<one sentence ≤178 chars naming the key args, e.g. title, priority, assignee>"}'
     )
 
     try:
-        text = await _gemini_generate("You are a security analyst.", prompt, max_tokens=60)
-        return text[:87] + "..." if len(text) > 90 else text
+        raw = await _gemini_generate("You are a security analyst.", prompt, max_tokens=80)
+        parsed = extract_json_object(raw)
+        title = str(parsed.get("title", f"Approve: {tool_name}"))[:64]
+        body = str(parsed.get("body", ""))[:178]
+        return {"title": title, "body": body}
     except Exception:
-        return f"Execute: {tool_name}"
+        return {"title": f"Approve: {tool_name}", "body": ""}
 
 
 async def check_danger(
@@ -156,7 +166,8 @@ async def check_danger(
         return {
             "dangerous": False,
             "reason": "safe tool bypass",
-            "action": f"Run {tool_name}",
+            "actionTitle": f"Run {tool_name}",
+            "actionBody": "",
             "safeBypass": True,
         }
 
@@ -173,7 +184,8 @@ async def check_danger(
         return {
             "dangerous": False,
             "reason": "below threshold — safe bypass",
-            "action": f"Run {tool_name}",
+            "actionTitle": f"Run {tool_name}",
+            "actionBody": "",
             "safeBypass": True,
         }
     if threshold_result:
@@ -182,7 +194,8 @@ async def check_danger(
         return {
             "dangerous": True,
             "reason": f"threshold exceeded: {threshold_result}",
-            "action": action,
+            "actionTitle": action["title"],
+            "actionBody": action["body"],
             "thresholdViolation": True,
         }
 
@@ -195,7 +208,7 @@ async def check_danger(
     dangerous_set = set(policy.get("alwaysDangerousTools", []))
     if normalized in dangerous_set or tool_name in dangerous_set:
         action = await get_action_description(tool_name, tool_args, script.get("scriptContent"))
-        return {"dangerous": True, "reason": "always-dangerous tool", "action": action, **script}
+        return {"dangerous": True, "reason": "always-dangerous tool", "actionTitle": action["title"], "actionBody": action["body"], **script}
 
     # ------------------------------------------------------------------ #
     # Path 4: classifier — unclassified tools + anything else
@@ -203,7 +216,7 @@ async def check_danger(
     # ------------------------------------------------------------------ #
     if not config.GOOGLE_API_KEY:
         log("[guardrail] GOOGLE_API_KEY missing; fail closed")
-        return {"dangerous": True, "reason": "GOOGLE_API_KEY not configured", "action": f"Execute {tool_name}", **script}
+        return {"dangerous": True, "reason": "GOOGLE_API_KEY not configured", "actionTitle": f"Approve: {tool_name}", "actionBody": "", **script}
 
     business_rules = policy.get("businessRules", "")
     business_rules_section = (
@@ -222,7 +235,8 @@ Schema:
 {{
   "dangerous": boolean,
   "reason": "one line",
-  "action": "under 90 chars, starts with a verb"
+  "actionTitle": "verb phrase ≤64 chars, e.g. Create P0 ticket",
+  "actionBody": "≤178 chars naming key args such as ticket title, priority, assignee"
 }}
 {business_rules_section}
 Core principle:
@@ -283,4 +297,4 @@ legitimate action than to allow a harmful action without oversight.
         return {**normalized_decision, **script}
     except Exception as e:
         log(f"[guardrail] classifier error; fail closed error={e}")
-        return {"dangerous": True, "reason": f"classifier error: {e}", "action": f"Execute {tool_name}", **script}
+        return {"dangerous": True, "reason": f"classifier error: {e}", "actionTitle": f"Approve: {tool_name}", "actionBody": "", **script}

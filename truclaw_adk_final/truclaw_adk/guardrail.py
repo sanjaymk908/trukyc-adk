@@ -89,7 +89,8 @@ async def truclaw_before_tool_callback(
         "userId": user_id,
         "dangerous": decision.get("dangerous"),
         "reason": decision.get("reason"),
-        "action": decision.get("action"),
+        "actionTitle": decision.get("actionTitle"),
+        "actionBody": decision.get("actionBody"),
         "classifierRaw": decision.get("classifierRaw"),
         "scriptPath": decision.get("scriptPath"),
         "scriptSha256": decision.get("scriptSha256"),
@@ -111,7 +112,8 @@ async def truclaw_before_tool_callback(
     log(f"[guardrail] dangerous action requires phone approval tool={tool_name} reason={decision.get('reason')} userId={user_id}")
 
     approval = await send_challenge(
-        decision.get("action") or f"Execute {tool_name}",
+        decision.get("actionTitle") or f"Approve: {tool_name}",
+        decision.get("actionBody") or "",
         decision.get("reason") or "dangerous action",
         tool_name,
         args,
@@ -131,5 +133,6 @@ async def truclaw_before_tool_callback(
         "blocked_by": "TruClaw",
         "tool": tool_name,
         "reason": approval.get("reason") or decision.get("reason"),
-        "action": decision.get("action"),
+        "actionTitle": decision.get("actionTitle"),
+        "actionBody": decision.get("actionBody"),
     }
