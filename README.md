@@ -15,90 +15,12 @@ Safe tools pass through instantly. Every decision — approved, blocked, or bypa
 
 ---
 
-## Quick Start (local)
-
-### Prerequisites
-
-- Python 3.10+
-- [Google ADK](https://github.com/google/adk-python)
-- Google API key from [Google AI Studio](https://aistudio.google.com/apikey) (for Gemini classifier)
-- TruClaw iOS app: [App Store](https://apps.apple.com/us/app/truclaw/id6749509039)
-
-### 1. Install
-
-```bash
-git clone https://github.com/sanjaymk908/trukyc-adk.git
-cd trukyc-adk
-pip install -e truclaw_adk_final/
-```
-
-### 2. Configure environment
-
-```bash
-export GOOGLE_API_KEY="your-google-ai-studio-key"
-export TRUKYC_RELAY_URL="https://trukyc-relay.trusources.workers.dev"
-export TRUCLAW_GCS_BUCKET="your-gcs-bucket-name"   # optional; omit for local-only state
-export TRUCLAW_ENFORCE=1                             # set to 0 for monitor+log mode
-```
-
-### 3. Install autopatch and start
-
-```bash
-truclaw install   # writes .pth into current Python env — runs once per virtualenv
-truclaw doctor    # verify config and connectivity
-adk web           # autopatch activates at interpreter startup
-```
-
-`truclaw install` writes a `.pth` file into the active Python environment so `truclaw_adk.autopatch` is imported at interpreter startup. The autopatch monkey-patches `BaseAgent.run_async` and installs `before_tool_callback` on every agent — no changes to agent code required.
-
-### 4. Set your policy
-
-TruClaw loads its policy from GCS at startup. A default policy is bootstrapped automatically on first run. To customize, edit the policy file in GCS:
-
-```
-gs://<TRUCLAW_GCS_BUCKET>/truclaw/policies/<agentId>/TruClaw-Policies.json
-```
-
-See [TruClaw-Policies.template.json](truclaw_adk_final/truclaw_adk/TruClaw-Policies.template.json) for the full schema including `safeTools`, `alwaysDangerousTools`, `toolThresholds` (rate limiting), and `businessRules` (LLM behavioral contract).
-
-### 5. Pair your iPhone
-
-```bash
-truclaw pair
-```
-
-Or send `pair my TruClaw device` in the ADK Dev UI. Open the pairing link on your iPhone — the TruClaw app completes pairing automatically. Pairing state persists to GCS and survives container restarts.
-
-### 6. Test
-
-Trigger a safe action (passes through silently):
-```
-list open tickets
-```
-
-Trigger a dangerous action (sends APNS challenge to your iPhone):
-```
-create a P0 ticket for the auth service outage
-```
-
-Expected log output:
-```
-[guardrail] pre-tool agent=software_assistant tool=create_new_ticket
-[guardrail] dangerous action requires phone approval tool=create_new_ticket
-[challenge] sending challengeSessionId=abc123 actionTitle=Create P0 ticket
-[challenge] approved challengeSessionId=abc123
-[guardrail] approved; allowing tool=create_new_ticket
-```
-
----
-
 ## Deploy to Google Cloud Run
 
 ### Prerequisites
 
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated
 - GCP project with billing enabled
-- GCS bucket created for TruClaw state
 - Google API key from [Google AI Studio](https://aistudio.google.com/apikey)
 - TruClaw iOS app: [App Store](https://apps.apple.com/us/app/truclaw/id6749509039)
 
@@ -181,6 +103,83 @@ Open `https://your-service-url/pair` on your iPhone or send `pair my TruClaw dev
 ### 8. Connect Google Chat (optional)
 
 In [Cloud Console](https://console.cloud.google.com) → APIs & Services → Google Chat API → Configuration, set the HTTP endpoint to `https://your-service-url/chat`. DM your app in Google Chat.
+
+---
+
+## Quick Start (local)
+
+### Prerequisites
+
+- Python 3.10+
+- [Google ADK](https://github.com/google/adk-python)
+- Google API key from [Google AI Studio](https://aistudio.google.com/apikey) (for Gemini classifier)
+- TruClaw iOS app: [App Store](https://apps.apple.com/us/app/truclaw/id6749509039)
+
+### 1. Install
+
+```bash
+git clone https://github.com/sanjaymk908/trukyc-adk.git
+cd trukyc-adk
+pip install -e truclaw_adk_final/
+```
+
+### 2. Configure environment
+
+```bash
+export GOOGLE_API_KEY="your-google-ai-studio-key"
+export TRUKYC_RELAY_URL="https://trukyc-relay.trusources.workers.dev"
+export TRUCLAW_GCS_BUCKET="your-gcs-bucket-name"   # optional; omit for local-only state
+export TRUCLAW_ENFORCE=1                             # set to 0 for monitor+log mode
+```
+
+### 3. Install autopatch and start
+
+```bash
+truclaw install   # writes .pth into current Python env — runs once per virtualenv
+truclaw doctor    # verify config and connectivity
+adk web           # autopatch activates at interpreter startup
+```
+
+`truclaw install` writes a `.pth` file into the active Python environment so `truclaw_adk.autopatch` is imported at interpreter startup. The autopatch monkey-patches `BaseAgent.run_async` and installs `before_tool_callback` on every agent — no changes to agent code required.
+
+### 4. Set your policy
+
+TruClaw loads its policy from GCS at startup. A default policy is bootstrapped automatically on first run. To customize, edit the policy file in GCS:
+
+```
+gs://<TRUCLAW_GCS_BUCKET>/truclaw/policies/<agentId>/TruClaw-Policies.json
+```
+
+See [TruClaw-Policies.template.json](truclaw_adk_final/truclaw_adk/TruClaw-Policies.template.json) for the full schema including `safeTools`, `alwaysDangerousTools`, `toolThresholds` (rate limiting), and `businessRules` (LLM behavioral contract).
+
+### 5. Pair your iPhone
+
+```bash
+truclaw pair
+```
+
+Or send `pair my TruClaw device` in the ADK Dev UI. Open the pairing link on your iPhone — the TruClaw app completes pairing automatically. Pairing state persists to GCS and survives container restarts.
+
+### 6. Test
+
+Trigger a safe action (passes through silently):
+```
+list open tickets
+```
+
+Trigger a dangerous action (sends APNS challenge to your iPhone):
+```
+create a P0 ticket for the auth service outage
+```
+
+Expected log output:
+```
+[guardrail] pre-tool agent=software_assistant tool=create_new_ticket
+[guardrail] dangerous action requires phone approval tool=create_new_ticket
+[challenge] sending challengeSessionId=abc123 actionTitle=Create P0 ticket
+[challenge] approved challengeSessionId=abc123
+[guardrail] approved; allowing tool=create_new_ticket
+```
 
 ---
 
