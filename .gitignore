@@ -12,3 +12,4 @@ env/
 
 # Exception: Do not ignore .gitignore itself
 !.gitignore
+GoogleADK-BugDemo.mp4
