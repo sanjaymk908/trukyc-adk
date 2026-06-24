@@ -2,8 +2,7 @@
 
 TruClaw is a biometric security guardrail for Google ADK agents. It intercepts dangerous tool calls before execution, classifies them with Gemini, and requires Face ID approval on a paired iPhone — creating a hard, unbypassable gate between an AI agent and any destructive action.
 
-[![TruClaw Demo](https://img.youtube.com/vi/5ROaep5yn1k/maxresdefault.jpg)](https://youtu.be/5ROaep5yn1k)
-
+https://github.com/user-attachments/assets/ee92e035-4f4e-43e3-8ce5-529cf07d0794
 ---
 
 ## How It Works
